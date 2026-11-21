@@ -36,6 +36,13 @@ public:
 
     std::string_view name() const override { return "Reverb"; }
 
+    // Svansen klingar ut när reverben stängs av (se Effect::hasTail).
+    bool hasTail() const override { return true; }
+    void setInputActive(bool on) override { active_.setTarget(on ? 1.0f : 0.0f); }
+    bool tailFinished() const override {
+        return !active_.isSmoothing() && active_.target() <= 0.0f && quietSamples_ > static_cast<int>(sr_ * 0.2);
+    }
+
     void prepare(const ProcessSpec& spec) override {
         sr_ = spec.sampleRate;
         numCh_ = std::min(spec.numChannels, kMaxChannels);
@@ -49,6 +56,8 @@ public:
         size_.prepare(sr_, 0.3);
         pred_.prepare(sr_, 0.1);
         mix_.prepare(sr_, 0.03);
+        active_.prepare(sr_, 0.03);
+        active_.setCurrentAndTarget(1.0f);
         reset();
     }
 
@@ -63,6 +72,7 @@ public:
         size_.setCurrentAndTarget(size.get());
         pred_.setCurrentAndTarget(predelayMs.get());
         mix_.setCurrentAndTarget(mix.get());
+        quietSamples_ = 0;
         lastLowCut_ = -1.0f;
         lastDamp_ = -1.0f;
         updateFilters();
@@ -86,12 +96,13 @@ public:
             const float scale = kMinScale + (kMaxScale - kMinScale) * size_.next();
             const float pd = pred_.next() * ms;
             const float m = mix_.next();
+            const float act = active_.next();   // 1 = på, 0 = av (svansen klingar ut)
             if ((i & 31) == 0) updateGains(rt, scale, ms);
 
             // 1. Mono in -> predelay -> diffusorer.
             float x = 0.0f;
             for (int ch = 0; ch < nCh; ++ch) x += buf.channels[ch][i];
-            x *= invCh;
+            x *= invCh * act;
             pre_.push(x);
             float s = pre_.readLinear(pd);
             for (int k = 0; k < kDiff; ++k) s = allpass(diff_[size_t(k)], s, kDiffMs[k] * ms, 0.6f);
@@ -120,8 +131,11 @@ public:
             wl = lowCut_.processSample(0, wl * 0.6f);
             wr = lowCut_.processSample(1, wr * 0.6f);
 
-            const float dryG = std::min(1.0f, 2.0f * (1.0f - m));
+            // Medan reverben är av går torr signal oförändrad (dryG -> 1).
+            const float dryG = 1.0f + act * (std::min(1.0f, 2.0f * (1.0f - m)) - 1.0f);
             const float wetG = std::min(1.0f, 2.0f * m);
+            const float wetPeak = std::max(std::fabs(wl), std::fabs(wr));
+            quietSamples_ = (wetPeak < 1.0e-5f) ? quietSamples_ + 1 : 0;
             for (int ch = 0; ch < nCh; ++ch) {
                 const float wet = (ch & 1) ? wr : wl;
                 buf.channels[ch][i] = dryG * buf.channels[ch][i] + wetG * wet;
@@ -171,7 +185,8 @@ private:
     float dampCoeff_ = 0.5f, lastLowCut_ = -1.0f, lastDamp_ = -1.0f;
     Biquad lowCut_;
     Lfo lfo_;
-    SmoothedValue decay_, size_, pred_, mix_;
+    SmoothedValue decay_, size_, pred_, mix_, active_;
+    int quietSamples_ = 0;
 };
 
 } // namespace gfx
