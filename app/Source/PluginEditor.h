@@ -27,6 +27,7 @@ private:
     void applyAppearance(bool force);
     void showMoreMenu();
     void setTunerOpen(bool open);
+    void setAnalysisOpen(bool open);
     void startLatencyMeasurement();
     void exportPresets();
     void importPresets();
@@ -40,6 +41,7 @@ private:
     ui::EffectPanel panel_;
     ui::PresetBar presets_;
     ui::TunerView tunerView_;
+    ui::AnalysisView analysisView_;
     juce::TooltipWindow tooltips_ { this, 700 };
     std::unique_ptr<juce::FileChooser> chooser_;
 

@@ -8,7 +8,7 @@ juce::String S(const char* utf8) { return juce::String::fromUTF8(utf8); }
 }
 
 GuitarFXEditor::GuitarFXEditor(GuitarFXProcessor& p)
-    : AudioProcessorEditor(&p), processor_(p), stage_(p), grid_(p, [this](int i) { panel_.show(i); }), panel_(p), presets_(p), tunerView_(p) {
+    : AudioProcessorEditor(&p), processor_(p), stage_(p), grid_(p, [this](int i) { panel_.show(i); }), panel_(p), presets_(p), tunerView_(p), analysisView_(p) {
     applyAppearance(true);
     setLookAndFeel(&lnf_);
     // Menyer, dialoger och popovers ritas i egna fönster – ge dem samma tema.
@@ -22,10 +22,13 @@ GuitarFXEditor::GuitarFXEditor(GuitarFXProcessor& p)
     header_.more.onClick = [this] { showMoreMenu(); };
     header_.tune.onClick = [this] { setTunerOpen(!tunerView_.isOpen()); };
     tunerView_.onClose = [this] { setTunerOpen(false); };
+    header_.analyse.onClick = [this] { setAnalysisOpen(!analysisView_.isOpen()); };
+    analysisView_.onClose = [this] { setAnalysisOpen(false); };
 
     for (juce::Component* c : std::initializer_list<juce::Component*> { &header_, &stage_, &grid_, &panel_, &presets_ })
         addAndMakeVisible(c);
     addChildComponent(tunerView_);
+    addChildComponent(analysisView_);
 
     setWantsKeyboardFocus(true);
     setResizable(true, true);
@@ -98,7 +101,15 @@ void GuitarFXEditor::timerCallback() {
     if (++tick_ % 15 == 0) applyAppearance(false);
 }
 
+void GuitarFXEditor::setAnalysisOpen(bool open) {
+    if (open && tunerView_.isOpen()) setTunerOpen(false);
+    analysisView_.setOpen(open);
+    if (open) analysisView_.toFront(false);
+    header_.analyse.setToggleState(open, juce::dontSendNotification);
+}
+
 void GuitarFXEditor::setTunerOpen(bool open) {
+    if (open && analysisView_.isOpen()) setAnalysisOpen(false);
     tunerView_.setOpen(open);
     if (open) tunerView_.toFront(false);
     header_.tune.setToggleState(open, juce::dontSendNotification);
@@ -135,6 +146,7 @@ void GuitarFXEditor::resized() {
     r.removeFromTop(20);
     panel_.setBounds(r);
     tunerView_.setBounds(stage_.getBounds().getUnion(panel_.getBounds()).getUnion(grid_.getBounds()));
+    analysisView_.setBounds(tunerView_.getBounds());
 }
 
 // Ta tangentbordsfokus när fönstret visas, så att 1–9/←/→ (och pedaler som
@@ -150,6 +162,7 @@ bool GuitarFXEditor::keyPressed(const juce::KeyPress& k) {
     const auto c = k.getTextCharacter();
     if (c == 't' || c == 'T') { setTunerOpen(!tunerView_.isOpen()); return true; }
     if (tunerView_.isOpen() && k == juce::KeyPress::escapeKey) { setTunerOpen(false); return true; }
+    if (analysisView_.isOpen() && k == juce::KeyPress::escapeKey) { setAnalysisOpen(false); return true; }
     if (c >= '1' && c <= '9') { rig.select(static_cast<int>(c - '1')); return true; }
     if (c == '0' || k == juce::KeyPress::escapeKey) { rig.activate(-1); return true; }
     if (k == juce::KeyPress::rightKey || k == juce::KeyPress::pageDownKey) { rig.selectNext(); return true; }
@@ -162,6 +175,7 @@ void GuitarFXEditor::showMoreMenu() {
     const bool standalone = juce::JUCEApplicationBase::isStandaloneApp();
     if (standalone) m.addItem(1, S("Ljudinställningar…"));
     m.addItem(2, S("Mät latens…"));
+    m.addItem(5, S("Analysera låt…"));
     m.addSeparator();
     m.addItem(3, S("Exportera presets…"));
     m.addItem(4, S("Importera presets…"));
@@ -185,6 +199,7 @@ void GuitarFXEditor::showMoreMenu() {
         if (r == 2) safe->startLatencyMeasurement();
         if (r == 3) safe->exportPresets();
         if (r == 4) safe->importPresets();
+        if (r == 5) safe->setAnalysisOpen(true);
         if (r >= 20 && r <= 22) { safe->processor_.appearance.store(r - 20); safe->applyAppearance(true); }
     });
 }

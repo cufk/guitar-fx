@@ -7,6 +7,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "engine/Engine.h"
 #include "engine/Rig.h"
+#include "engine/SongAnalyzer.h"
 #include "dsp/effects/Cabinet.h"
 #include "dsp/effects/Chorus.h"
 #include "dsp/effects/Distortion.h"
@@ -58,6 +59,9 @@ public:
     // Presets som fil (backup/flytta mellan Mac och iPad).
     juce::var rigToJson() const;
     bool rigFromJson(const juce::var& json);
+
+    // Skapa ett preset från en låtanalys (meddelandetråden). Returnerar presetets index.
+    int createPresetFromAnalysis(const gfx::SongAnalysis& a, const juce::String& name);
 
     // Senast mottagna MIDI-meddelande (för att visa i GUI:t), t.ex. "PC 3".
     juce::String lastMidiDescription() const;

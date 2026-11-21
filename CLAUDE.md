@@ -22,6 +22,9 @@ Driftsäkerhet live är huvudkravet. Svara på svenska.
   Rattar och effektrutor följer ett fast rutnät med fyra kolumner (`kGridColumns`).
 - Stämapparat: `engine/TunerTap.h` (ljudtråden kopierar torr ingång till ringbuffert,
   tystar ev. utgången) + `dsp/core/PitchDetector.h` (YIN, körs på GUI-tråden).
+- Låtanalys: `engine/SongAnalyzer` (ren signalanalys: klang, rum, bredd, dynamik, tempo) körs
+  i egen tråd från `AnalysisView`; `GuitarFXProcessor::createPresetFromAnalysis` gör preset.
+  Användaren valde signalanalys (inte Demucs/AI-separering) – Demucs kan bli ett Mac-tillval.
   Ny effekt = lägg till i kedjan + `rig_.addEffect({...})` i processorn; ruta, rattar och
   sparning kommer automatiskt.
 - Fristående app: eget fönster i `app/Source/StandaloneApp.cpp`
@@ -48,8 +51,8 @@ Se "Färdplan" i README.md. Klart: akustisk ingång, EQ med notch, sustain (komp
 chorus, flanger, widener, reverb (FDN, utklingning vid bypass), mono-utgång, presets (Rig)
 med MIDI/tangenter, monokromt GUI med runda rattar, eget appfönster, distortion,
 kabinett-IR, latensmätare (5,60 ms rundtur, buffert 64).
-Stämapparat klar. Nästa: låtanalys → presetförslag (vägval väntar på användaren),
-delay; MIDI learn; scenläge för iPad.
+Stämapparat och låtanalys klara. Nästa: delay (kan använda låtens BPM); MIDI learn;
+scenläge för iPad.
 Känt: effekter före chorus bearbetar båda kanalerna fast signalen är mono (dubbel CPU) –
 värt att åtgärda före Raspberry Pi. getStateInformation läser Rig och antar
 meddelandetråden (gäller standalone; vissa plugin-värdar anropar från annan tråd).

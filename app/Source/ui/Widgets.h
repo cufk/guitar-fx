@@ -10,6 +10,8 @@
 //   InputPanel     ingång/utgång/nivåer (popover)
 
 #include <juce_audio_processors/juce_audio_processors.h>
+#include <atomic>
+#include <thread>
 #include "Icons.h"
 #include "Theme.h"
 #include "dsp/core/PitchDetector.h"
@@ -193,6 +195,39 @@ private:
     juce::Rectangle<int> noteArea_, infoArea_;
 };
 
+// Låtanalys (täcker huvudytan): välj en ljudfil, analysen körs i en egen tråd, och
+// resultatet kan bli ett nytt preset. Ren signalanalys (engine/SongAnalyzer).
+class AnalysisView final : public juce::Component, private juce::Timer {
+public:
+    explicit AnalysisView(GuitarFXProcessor& proc);
+    ~AnalysisView() override;
+    void setOpen(bool open);
+    bool isOpen() const { return open_; }
+    void chooseFile();
+    std::function<void()> onClose;
+    void paint(juce::Graphics&) override;
+    void resized() override;
+private:
+    enum class State { Idle, Working, Done, Failed };
+    void timerCallback() override;
+    void start(const juce::File& file);
+    void stopWorker();
+    GuitarFXProcessor& proc_;
+    Pill choose_ { juce::String::fromUTF8("Välj låt…"), false };
+    Pill create_ { "Skapa preset", false };
+    Pill close_ { "Klar", false };
+    std::unique_ptr<juce::FileChooser> chooser_;
+    std::thread worker_;
+    std::atomic<bool> cancel_ { false }, finished_ { false };
+    std::atomic<float> progress_ { 0.0f };
+    gfx::SongAnalysis result_;      // skrivs av tråden innan finished_ sätts
+    juce::String error_;
+    State state_ = State::Idle;
+    bool open_ = false;
+    juce::String title_;
+    juce::Rectangle<int> body_;
+};
+
 // Sidhuvud: stor rubrik med aktivt läge, ingångspiller och meny.
 class HeaderBar final : public juce::Component {
 public:
@@ -202,6 +237,7 @@ public:
     void resized() override;
     Pill input { juce::String::fromUTF8("Ingång 1"), false };
     Pill tune { juce::String::fromUTF8("Stäm"), false };
+    Pill analyse { juce::String::fromUTF8("Analysera låt"), false };
     IconButton more { icons::Symbol::More, "Fler val", false };
 private:
     juce::String subtitle_;
