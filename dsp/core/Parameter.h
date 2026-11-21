@@ -38,7 +38,7 @@ public:
     void setCurrentAndTarget(float v) noexcept { current_ = target_ = v; countdown_ = 0; }
 
     void setTarget(float v) noexcept {
-        if (v == target_) return;
+        if (!(v < target_) && !(v > target_)) return; // == utan -Wfloat-equal
         target_ = v;
         countdown_ = rampLength_;
         step_ = (target_ - current_) / static_cast<float>(rampLength_);

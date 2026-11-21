@@ -12,6 +12,7 @@
 // Mac-appen, iOS-appen, offline-verktyget, testerna och senare Raspberry Pi.
 
 #include "EffectChain.h"
+#include "LatencyProbe.h"
 #include "dsp/effects/Gain.h"
 #include "dsp/effects/SafetyLimiter.h"
 #include <atomic>
@@ -38,6 +39,7 @@ public:
     Gain& outputGain()         { return outputGain_; }
     SafetyLimiter& limiter()   { return limiter_; }
     EffectChain& chain()       { return chain_; }
+    LatencyProbe& latencyProbe() { return probe_; }
     std::atomic<int> inputChannel { 0 };
 
     // --- Mätvärden för GUI (läses från valfri tråd) ---
@@ -58,6 +60,7 @@ private:
     Gain outputGain_ { 0.0f, -60.0f, 12.0f };
     EffectChain chain_;
     SafetyLimiter limiter_;
+    LatencyProbe probe_;
 
     std::atomic<float> inputPeak_ { 0.0f }, outputPeak_ { 0.0f };
     std::atomic<uint32_t> recoveries_ { 0 };

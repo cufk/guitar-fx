@@ -16,6 +16,9 @@ Driftsäkerhet live är huvudkravet. Svara på svenska.
 - Varje ny effekt: tester i `tests/` för tystnad, extrema parametrar (inga NaN)
   och att `process()` inte allokerar (se `NoAllocScope`).
 - Ändra aldrig så att limitern kan förbikopplas.
+- JUCE-strängar med å/ä/ö: `juce::String::fromUTF8("...")` (annars tolkas de som ASCII).
+- Byte av tunga resurser (IR, senare presets) under spelning: bygg utanför ljudtråden,
+  lämna över via atomisk pekare, radera på icke-ljudtråd (mönster i `Cabinet`).
 
 ## Kommandon
 - Konfigurera: `cmake -B build -G Xcode` (eller utan -G för Makefiles/Ninja)
@@ -25,5 +28,8 @@ Driftsäkerhet live är huvudkravet. Svara på svenska.
 - Offline: `build/tools/offline-render/gfx-render in.wav ut.wav`
 
 ## Nästa steg
-Se "Färdplan" i README.md. Nästa: mät latens på Mac + Scarlett, sedan distortion
-med oversampling och kabinett-IR.
+Se "Färdplan" i README.md. Klart: distortion (4x oversampling), kabinett-IR,
+latensmätare. Nästa: användaren mäter latens + lyssnar med DI-tagningar;
+sedan `ModulatedDelay` → Chorus och Flanger.
+Känd förbättring: effekterna bearbetar båda kanalerna fast signalen är mono
+(dubbel CPU) – värt att åtgärda före Raspberry Pi.

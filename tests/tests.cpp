@@ -4,6 +4,12 @@
 // minne. Vi räknar alla anrop till operator new medan process() körs.
 
 #include "engine/Engine.h"
+#include "dsp/core/Convolver.h"
+#include "dsp/core/Oversampler.h"
+#include "dsp/effects/Cabinet.h"
+#include "dsp/effects/Distortion.h"
+#include <random>
+#include <thread>
 #include <atomic>
 #include <cmath>
 #include <cstdio>
@@ -101,6 +107,42 @@ struct InvertEffect final : gfx::Effect {
             for (int i = 0; i < b.numSamples; ++i) b.channels[ch][i] = -b.channels[ch][i];
     }
 };
+
+
+// Amplitud för en frekvens (Goertzel), över v[start, start+len).
+static float toneAmplitude(const std::vector<float>& v, size_t start, size_t len, double hz) {
+    const double w = 2.0 * 3.14159265358979 * hz / kSr, c = 2.0 * std::cos(w);
+    double s1 = 0.0, s2 = 0.0;
+    for (size_t i = start; i < start + len; ++i) { const double s0 = v[i] + c * s1 - s2; s2 = s1; s1 = s0; }
+    const double re = s1 - s2 * std::cos(w), im = s2 * std::sin(w);
+    return static_cast<float>(2.0 * std::sqrt(re * re + im * im) / static_cast<double>(len));
+}
+
+static bool allFiniteAndBounded(const Stereo& s, float bound) {
+    for (size_t i = 0; i < s.l.size(); ++i)
+        if (!std::isfinite(s.l[i]) || !std::isfinite(s.r[i]) || std::fabs(s.l[i]) > bound || std::fabs(s.r[i]) > bound) return false;
+    return true;
+}
+
+// Kör en effekt direkt (utan motor) på hela bufferten i block.
+static void runEffect(gfx::Effect& fx, Stereo& s, int block = kBlock) {
+    const int n = static_cast<int>(s.l.size());
+    for (int start = 0; start < n; start += block)
+        fx.process(s.view(start, std::min(block, n - start)));
+}
+
+// Lägen och extremvärden som varje effekt ska klara.
+static void stressInput(Stereo& s) {
+    std::mt19937 rng(1);
+    std::uniform_real_distribution<float> d(-1.0f, 1.0f);
+    const size_t n = s.l.size();
+    for (size_t i = 0; i < n; ++i) {
+        float v = d(rng);
+        if (i % 977 == 0) v = 1.0e6f;                 // jättespik
+        if (i > n / 2 && i < n / 2 + 500) v = 1.0e-40f; // denormaler
+        s.l[i] = s.r[i] = v;
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Tester
@@ -201,6 +243,274 @@ int main() {
             e.process(s.view(b * kBlock, kBlock));
         }
         CHECK(scope.count() == 0);
+    });
+
+
+    // ----------------------------------------------------------------- Oversampler
+    run("Oversampler: upp+ner utan waveshaper ger platt frekvensgång och rätt latens", [] {
+        gfx::Oversampler4x os;
+        os.prepare(64, 1);
+        const int n = 48000;
+        std::vector<float> out(static_cast<size_t>(n)), tmp(64 * 4);
+        auto pass = [&](const std::vector<float>& in) {
+            os.reset();
+            for (int start = 0; start < n; start += 64) {
+                os.up(0, in.data() + start, 64, tmp.data());
+                os.down(0, tmp.data(), 64, out.data() + start);
+            }
+        };
+        // Impuls: toppen ska ligga vid rapporterad latens (±1).
+        std::vector<float> imp(static_cast<size_t>(n), 0.0f);
+        imp[100] = 1.0f;
+        pass(imp);
+        int peakIdx = 0;
+        for (int i = 0; i < n; ++i) if (std::fabs(out[size_t(i)]) > std::fabs(out[size_t(peakIdx)])) peakIdx = i;
+        CHECK(std::abs((peakIdx - 100) - gfx::Oversampler4x::latencySamples()) <= 1);
+
+        for (double hz : { 100.0, 1000.0, 8000.0, 16000.0, 19000.0 }) {
+            std::vector<float> in(static_cast<size_t>(n));
+            for (int i = 0; i < n; ++i) in[size_t(i)] = 0.5f * std::sin(float(2.0 * 3.14159265358979 * hz * i / kSr));
+            pass(in);
+            const float a = toneAmplitude(out, 4800, 38400, hz);
+            CHECK(std::fabs(gfx::gainToDb(a / 0.5f)) < 0.2f);
+        }
+    });
+
+    // ----------------------------------------------------------------- Distortion
+    run("Distortion: tystnad in -> tystnad ut (alla lägen)", [] {
+        for (int m = 0; m < 3; ++m) {
+            gfx::Distortion d;
+            d.mode.set(float(m));
+            d.driveDb.set(48.0f);
+            d.prepare({ kSr, kBlock, 2 });
+            Stereo s(9600);
+            runEffect(d, s);
+            float peak = 0.0f;
+            for (size_t i = 4800; i < s.l.size(); ++i) peak = std::max(peak, std::fabs(s.l[i]));
+            CHECK(peak < 1.0e-6f);
+        }
+    });
+
+    run("Distortion: extrema parametrar och indata ger inga NaN och begränsad nivå", [] {
+        for (int m = 0; m < 3; ++m)
+            for (float drive : { 0.0f, 48.0f })
+                for (float tone : { 0.0f, 1.0f }) {
+                    gfx::Distortion d;
+                    d.mode.set(float(m)); d.driveDb.set(drive); d.tone.set(tone); d.levelDb.set(6.0f);
+                    d.tightHz.set(400.0f);
+                    d.prepare({ kSr, kBlock, 2 });
+                    Stereo s(24000);
+                    stressInput(s);
+                    runEffect(d, s, 61); // udda blockstorlek
+                    CHECK(allFiniteAndBounded(s, 8.0f));
+                }
+    });
+
+    run("Distortion: waveshapers är begränsade och kontinuerliga", [] {
+        for (int m = 0; m < 3; ++m) {
+            float prev = gfx::Distortion::shapeSample(m, -10.0f), maxJump = 0.0f, maxAbs = 0.0f;
+            for (float x = -10.0f; x <= 10.0f; x += 0.001f) {
+                const float y = gfx::Distortion::shapeSample(m, x);
+                maxAbs = std::max(maxAbs, std::fabs(y));
+                maxJump = std::max(maxJump, std::fabs(y - prev));
+                prev = y;
+            }
+            CHECK(maxAbs <= 1.0f);
+            CHECK(maxJump < 0.01f);
+            CHECK(std::isfinite(gfx::Distortion::shapeSample(m, std::numeric_limits<float>::quiet_NaN())));
+            CHECK(std::fabs(gfx::Distortion::shapeSample(m, 0.0f)) < 1.0e-6f); // ingen DC i vila
+        }
+    });
+
+    run("Distortion: oversampling håller aliasing under -70 dB (7 kHz, drive 24 dB)", [] {
+        // Udda övertoner av 7 kHz: 35 kHz viks till 13 kHz och 49 kHz till 1 kHz
+        // om de inte filtreras bort. Mät dessa relativt grundtonen.
+        gfx::Distortion d;
+        d.driveDb.set(24.0f); d.tone.set(1.0f); d.levelDb.set(0.0f); d.tightHz.set(20.0f);
+        d.prepare({ kSr, kBlock, 2 });
+        const int n = 48000;
+        Stereo s(n);
+        sine(s.l, 0.5f, 7000.0f);
+        s.r = s.l;
+        runEffect(d, s);
+        const float fund = toneAmplitude(s.l, 9600, 38400, 7000.0);
+        const float a13 = toneAmplitude(s.l, 9600, 38400, 13000.0);
+        const float a1  = toneAmplitude(s.l, 9600, 38400, 1000.0);
+        const float worst = gfx::gainToDb(std::max(a13, a1) / fund);
+        std::printf("       aliasing: %.1f dB relativt grundton\n", worst);
+        CHECK(worst < -70.0f);
+    });
+
+    run("Distortion: process() allokerar inget minne", [] {
+        gfx::Distortion d;
+        d.prepare({ kSr, kBlock, 2 });
+        Stereo s(kBlock * 100);
+        sine(s.l, 0.5f, 220.0f);
+        NoAllocScope scope;
+        for (int b = 0; b < 100; ++b) {
+            if (b == 30) { d.tone.set(0.9f); d.driveDb.set(40.0f); d.mode.set(2.0f); d.tightHz.set(300.0f); }
+            if (b == 60) d.reset();
+            d.process(s.view(b * kBlock, kBlock));
+        }
+        CHECK(scope.count() == 0);
+    });
+
+    // ----------------------------------------------------------------- Faltning / kabinett
+    run("Faltning: identisk med direkt faltning (IR 1000, udda block)", [] {
+        std::mt19937 rng(7);
+        std::uniform_real_distribution<float> d(-1.0f, 1.0f);
+        std::vector<float> ir(1000), x(6000), ref(6000, 0.0f);
+        for (auto& v : ir) v = d(rng) * 0.05f;
+        for (auto& v : x) v = d(rng);
+        for (size_t n = 0; n < x.size(); ++n)
+            for (size_t k = 0; k < ir.size() && k <= n; ++k) ref[n] += ir[k] * x[n - k];
+
+        gfx::FFT fft;
+        fft.prepare(gfx::ConvolverIR::kFftSize);
+        std::unique_ptr<gfx::ConvolverIR> c(gfx::ConvolverIR::build(ir.data(), int(ir.size()), fft));
+        gfx::Convolver conv;
+        conv.prepare(64);
+        auto y = x;
+        for (size_t start = 0; start < y.size(); start += 37)
+            conv.process(c.get(), fft, y.data() + start, int(std::min<size_t>(37, y.size() - start)));
+        float maxErr = 0.0f;
+        for (size_t i = 0; i < y.size(); ++i) maxErr = std::max(maxErr, std::fabs(y[i] - ref[i]));
+        CHECK(maxErr < 1.0e-4f);
+    });
+
+    run("Kabinett: tystnad, extrema indata och IR-byte under drift", [] {
+        gfx::Cabinet cab;
+        cab.levelDb.set(12.0f);
+        cab.prepare({ kSr, kBlock, 2 });
+        Stereo silent(9600);
+        runEffect(cab, silent);
+        float peak = 0.0f;
+        for (float v : silent.l) peak = std::max(peak, std::fabs(v));
+        CHECK(peak == 0.0f);
+
+        Stereo s(48000);
+        stressInput(s);
+        runEffect(cab, s);
+        CHECK(allFiniteAndBounded(s, 1.0e9f));
+
+        // Byt till en IR som bara är en fördröjd impuls vid 44,1 kHz och kolla att den tar.
+        std::vector<float> imp(441, 0.0f);
+        imp[0] = 1.0f;
+        CHECK(cab.loadImpulseResponse(imp.data(), int(imp.size()), 44100.0, "test"));
+        CHECK(cab.impulseResponseName() == "test");
+        cab.levelDb.set(0.0f);
+        cab.reset();
+        Stereo t(4800);
+        sine(t.l, 0.5f, 440.0f);
+        t.r = t.l;
+        const auto ref = t.l;
+        runEffect(cab, t);
+        float err = 0.0f;
+        for (size_t i = 2400; i < t.l.size(); ++i) err = std::max(err, std::fabs(t.l[i] - ref[i]));
+        CHECK(err < 0.02f); // ≈ genomgång (liten avvikelse från omsampling)
+        cab.collectGarbage();
+    });
+
+    run("Kabinett: IR-laddning från annan tråd medan ljudet går (inga allokeringar på ljudtråden)", [] {
+        gfx::Cabinet cab;
+        cab.prepare({ kSr, kBlock, 2 });
+        Stereo s(kBlock * 2000);
+        sine(s.l, 0.5f, 220.0f);
+        std::atomic<bool> done { false };
+        std::vector<float> ir = gfx::Cabinet::builtInImpulseResponse();
+        std::thread loader([&] {
+            for (int i = 0; i < 20; ++i) {
+                ir[0] *= -1.0f;
+                cab.loadImpulseResponse(ir.data(), int(ir.size()), 48000.0, "ir" + std::to_string(i));
+                cab.collectGarbage();
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+            done = true;
+        });
+        // Allokeringar sker på loader-tråden, så räkna bara antalet på ljudtråden
+        // genom att köra med räknaren avstängd och istället kontrollera att
+        // process() är ren i ett separat pass nedan.
+        for (int b = 0; b < 2000; ++b) cab.process(s.view(b * kBlock, kBlock));
+        loader.join();
+        CHECK(done.load());
+        CHECK(allFiniteAndBounded(s, 100.0f));
+
+        cab.loadImpulseResponse(ir.data(), int(ir.size()), 48000.0, "sista"); // väntar på upplockning
+        NoAllocScope scope;
+        for (int b = 0; b < 200; ++b) {
+            if (b == 100) cab.reset();
+            cab.process(s.view(b * kBlock, kBlock));
+        }
+        CHECK(scope.count() == 0);
+    });
+
+    // ----------------------------------------------------------------- Hela kedjan
+    run("Kedja: in -> distortion -> kabinett med av/på och allt realtidssäkert", [] {
+        gfx::Engine e;
+        const int dist = e.chain().add(std::make_unique<gfx::Distortion>());
+        const int cab  = e.chain().add(std::make_unique<gfx::Cabinet>(), false);
+        e.prepare({ kSr, 256, 2 });
+        CHECK(e.latencySamples() == gfx::Oversampler4x::latencySamples());
+        Stereo s(kBlock * 400);
+        sine(s.l, 0.4f, 196.0f);
+        NoAllocScope scope;
+        for (int b = 0; b < 400; ++b) {
+            if (b == 50)  e.chain().setEnabled(cab, true);
+            if (b == 150) e.chain().setEnabled(dist, false);
+            if (b == 250) e.chain().setEnabled(dist, true);
+            e.process(s.view(b * kBlock, kBlock));
+        }
+        CHECK(scope.count() == 0);
+        CHECK(allFiniteAndBounded(s, 1.0f));
+        CHECK(e.recoveryCount() == 0);
+    });
+
+    // ----------------------------------------------------------------- Latensmätning
+    run("Latensmätning: simulerad loopback-kabel med 300 samples fördröjning", [] {
+        gfx::Engine e;
+        e.chain().add(std::make_unique<gfx::Distortion>()); // ska hoppas över under mätning
+        e.prepare({ kSr, kBlock, 2 });
+        constexpr int kDelay = 300;
+        std::vector<float> line(kDelay + kBlock, 0.0f); // utsignal -> insignal
+        std::vector<float> l(kBlock), r(kBlock);
+        float* p[2] = { l.data(), r.data() };
+        size_t wr = 0;
+        auto& probe = e.latencyProbe();
+        probe.start();
+        // Lite brus och en svag lågpass "kabel/omvandlare".
+        std::mt19937 rng(3);
+        std::normal_distribution<float> noise(0.0f, 1.0e-4f);
+        float lp = 0.0f;
+        int blocks = 0;
+        NoAllocScope scope;
+        while (blocks < 10000 && (blocks < 2 || probe.isActive())) {
+            for (int i = 0; i < kBlock; ++i) {
+                const size_t rd = (wr + line.size() - kDelay + size_t(i)) % line.size();
+                lp += 0.6f * (line[rd] - lp);
+                l[size_t(i)] = lp + noise(rng);
+                r[size_t(i)] = 0.0f;
+            }
+            e.process({ p, 2, kBlock });
+            for (int i = 0; i < kBlock; ++i) line[(wr + size_t(i)) % line.size()] = l[size_t(i)];
+            wr = (wr + kBlock) % line.size();
+            ++blocks;
+        }
+        CHECK(scope.count() == 0);
+        CHECK(probe.status() == gfx::LatencyProbe::Status::Done);
+        CHECK(std::abs(probe.resultSamples() - kDelay) <= 1);
+        std::printf("       uppmätt: %d samples (%.2f ms)\n", probe.resultSamples(), probe.resultMs());
+    });
+
+    run("Latensmätning: utan kabel rapporteras 'ingen signal'", [] {
+        gfx::Engine e;
+        e.prepare({ kSr, kBlock, 2 });
+        Stereo s(kBlock);
+        e.latencyProbe().start();
+        for (int b = 0; b < 10000 && (b < 2 || e.latencyProbe().isActive()); ++b) {
+            std::fill(s.l.begin(), s.l.end(), 0.0f);
+            e.process(s.view(0, kBlock));
+        }
+        CHECK(e.latencyProbe().status() == gfx::LatencyProbe::Status::NoSignal);
     });
 
     std::printf("\n%s (%d fel)\n", gFailures == 0 ? "ALLA TESTER OK" : "TESTER MISSLYCKADES", gFailures);

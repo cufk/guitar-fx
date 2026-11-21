@@ -4,23 +4,32 @@ Egen gitarreffektprocessor: chorus, flanger, reverb och distortion. Utvecklas p�
 med Focusrite Scarlett och är byggd för att flyttas till iPad (live) och eventuellt
 Raspberry Pi eller egen pedal.
 
-## Status (v0.1 – skelett)
+## Status (v0.2 – distortion, kabinett, latensmätning)
 
 - Portabel DSP-kärna och ljudmotor utan beroenden (`dsp/`, `engine/`)
 - Passthrough: gitarr in på vald ingång → dual mono ut
 - Säkerhetslimiter sist i kedjan (−1 dBFS tak, NaN/Inf-skydd, automatisk återställning)
 - Effektkedja med klickfri bypass (15 ms crossfade)
+- **Distortion** med 4x oversampling (halvbands-FIR, ~0,58 ms latens vid 48 kHz):
+  lägena Overdrive / Distortion / Fuzz, rattar Drive, Tight (lågskärning före
+  klippning), Ton och Nivå. Uppmätt aliasing < −100 dB (7 kHz-ton, 24 dB drive).
+- **Kabinett** med IR-faltning utan latens (direkt huvud + partitionerad FFT-svans).
+  Inbyggt syntetiskt 1x12-svar, eller ladda egen IR (WAV/AIFF, valfri
+  samplingsfrekvens – samplas om automatiskt, normaliseras, max 0,5 s).
+  Byte av IR under spelning är låsfritt.
+- **Latensmätning** i appen: loopback-kabel ut → in, knappen "Mät latens".
 - JUCE-app: Standalone + AU/VST3 (Mac), AUv3 (iOS), VST3 (Linux)
-- Scen-GUI v0: in/ut-gain, nivåmätare, CPU, limiter, watchdog-varning
-- Offline-verktyg `gfx-render` och tester (inkl. att ljudtråden inte allokerar minne)
-
-Inga riktiga effekter ännu – de läggs till i `dsp/effects/` enligt färdplanen nedan.
+- Scen-GUI v1: nivåer, distortion, kabinett, mätare, CPU, limiter, watchdog-varning
+- Offline-verktyg `gfx-render` (med effekterna) och 19 tester (inkl. att ljudtråden
+  inte allokerar minne och att IR-byte från annan tråd är säkert)
 
 ## Struktur
 
 ```
 dsp/            Ren C++20. Effect-interface, buffrar, parametrar, effekter.
-engine/         Effektkedja och Engine (in-gain → kedja → ut-gain → limiter).
+  core/         Biquad, Oversampler4x, FFT, Convolver, Parameter, DspUtils
+  effects/      Gain, SafetyLimiter, Distortion, Cabinet
+engine/         Effektkedja, Engine (in-gain → kedja → ut-gain → limiter), LatencyProbe.
 app/            JUCE-skal (Standalone/plugin) + GUI. Endast limkod.
 tools/          gfx-render: kör motorn på WAV-filer.
 tests/          Beroendefria tester.
@@ -75,12 +84,30 @@ Samma CMake-bygge fungerar (verifierat på Ubuntu 24.04 x86_64). Kräver bl.a.
 libxinerama-dev libxcursor-dev libxext-dev libxi-dev`. För en huvudlös pedal på Pi
 byggs i stället ett litet ALSA/JACK-värdprogram runt `gfx::Engine`.
 
+## Mäta latens (färdplanens steg 2)
+
+1. Koppla bort förstärkare/hörlurar. Slå **av** INST på ingången och vrid ner gain.
+2. Koppla en kabel från Scarletts **utgång 1** (eller Line Out L) till **ingång 1**.
+3. Klicka **Mät latens** och sedan **Starta**. Appen skickar 5 klick på −12 dBFS och
+   visar rundturslatensen (DAC + ADC + drivrutin + buffertar) i ms och samples.
+4. Prova olika buffertstorlekar (Options → Audio/MIDI Settings) och anteckna resultaten.
+   Effektlatensen (oversampling, för närvarande 28 samples) kommer ovanpå när
+   distortion är på och visas i statusraden.
+
+"Ingen signal" betyder att klicket inte kom tillbaka (kabel, fel ingång, för låg gain).
+Om Scarletts "Direct Monitor" är på hörs klicken direkt – det påverkar inte mätningen.
+
 ## Offline-verktyget
 
 ```bash
 ./build/tools/offline-render/gfx-render di-gitarr.wav ut.wav --in-gain 6
+./build/tools/offline-render/gfx-render di-gitarr.wav ut.wav --drive 24 --mode 0 --tone 0.6 --cab
+./build/tools/offline-render/gfx-render di-gitarr.wav ut.wav --drive 30 --mode 1 --ir min-ir.wav
 ./build/tools/offline-render/gfx-render --sine 220 --seconds 5 test.wav
 ```
+
+`--drive` slår på distortion (`--mode` 0 Overdrive, 1 Distortion, 2 Fuzz), `--cab` det
+inbyggda kabinettet och `--ir` laddar en egen IR.
 
 Spela in några torra DI-tagningar direkt från Scarlett och använd dem som
 referens när effekterna utvecklas.
@@ -88,8 +115,9 @@ referens när effekterna utvecklas.
 ## Färdplan
 
 1. ✅ Skelett, passthrough, limiter, tester
-2. Mät latens rundtur på Mac + Scarlett (loopback-kabel ut→in)
-3. Distortion (waveshaper + 4x oversampling) och kabinett-IR (faltning)
+2. 🟡 Mät latens rundtur på Mac + Scarlett – verktyget finns i appen, mätningen återstår
+3. ✅ Distortion (waveshaper + 4x oversampling) och kabinett-IR (faltning)
+   - Kvar: lyssningstest med riktiga DI-tagningar och finjustering av klangen
 4. `ModulatedDelay` → Chorus och Flanger
 5. Reverb (Freeverb först, sedan FDN/plate)
 6. Presets (JSON), MIDI-fotswitch, scenläge
@@ -103,4 +131,6 @@ referens när effekterna utvecklas.
 - Säkerhetslimitern sitter alltid sist och kan inte förbikopplas.
 - Varje ny effekt ska ha tester för: tystnad in → tystnad ut, ingen NaN vid extrema
   parametrar, och ingen allokering i `process()`.
+- Strängar med å/ä/ö i JUCE-koden måste skrivas som `juce::String::fromUTF8("...")`
+  (JUCE tolkar annars `const char*` som ASCII).
 - Hårdvarumässig reservväg (ABY/true bypass-switch) före ljudkortet vid spelning.

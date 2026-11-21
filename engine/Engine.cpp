@@ -14,6 +14,7 @@ void Engine::prepare(const ProcessSpec& spec) {
     chain_.prepare(spec);
     outputGain_.prepare(spec);
     limiter_.prepare(spec);
+    probe_.prepare(spec.sampleRate);
 }
 
 void Engine::reset() {
@@ -34,10 +35,15 @@ void Engine::process(AudioBufferView io) {
     float inPeak = 0.0f;
     for (int n = 0; n < io.numSamples; ++n)
         inPeak = std::max(inPeak, std::fabs(io.channels[src][n]));
+    inputPeak_.store(inPeak, std::memory_order_relaxed);
+
+    // Latensmätning: proben äger utgången (klick ut, lyssnar på ingången).
+    // Effektkedjan hoppas över, men limitern körs alltid.
+    const bool probing = probe_.process(io.channels[src], io.channels[src], io.numSamples);
+
     for (int ch = 0; ch < io.numChannels; ++ch)
         if (ch != src)
             std::memcpy(io.channels[ch], io.channels[src], sizeof(float) * static_cast<size_t>(io.numSamples));
-    inputPeak_.store(inPeak, std::memory_order_relaxed);
 
     // Kanaler utöver vad vi förberett för tystas (ska inte hända, men säkert).
     for (int ch = channels; ch < io.numChannels; ++ch)
@@ -49,7 +55,9 @@ void Engine::process(AudioBufferView io) {
     AudioBufferView view { io.channels, usedCh, io.numSamples };
     for (int start = 0; start < io.numSamples; start += spec_.maxBlockSize) {
         const int len = std::min(spec_.maxBlockSize, io.numSamples - start);
-        processChunk(view.subBlock(start, len, ptrs));
+        auto chunk = view.subBlock(start, len, ptrs);
+        if (probing) limiter_.process(chunk);
+        else         processChunk(chunk);
     }
 
     // 3. Mätare.
