@@ -15,9 +15,11 @@ void Engine::prepare(const ProcessSpec& spec) {
     outputGain_.prepare(spec);
     limiter_.prepare(spec);
     probe_.prepare(spec.sampleRate);
+    input_.prepare(spec.sampleRate);
 }
 
 void Engine::reset() {
+    input_.reset();
     inputGain_.reset();
     chain_.reset();
     outputGain_.reset();
@@ -30,20 +32,24 @@ void Engine::process(AudioBufferView io) {
     if (io.numChannels <= 0 || io.numSamples <= 0) return;
     const int channels = std::min(io.numChannels, spec_.numChannels);
 
-    // 1. Mono-källa -> alla kanaler (dual mono).
-    const int src = std::clamp(inputChannel.load(std::memory_order_relaxed), 0, io.numChannels - 1);
-    float inPeak = 0.0f;
-    for (int n = 0; n < io.numSamples; ++n)
-        inPeak = std::max(inPeak, std::fabs(io.channels[src][n]));
-    inputPeak_.store(inPeak, std::memory_order_relaxed);
+    // 1. Ingångar -> mono (kanal 0) -> alla kanaler (dual mono).
+    const bool hasIn2 = io.numChannels > 1;
+    for (int ch = 0; ch < (hasIn2 ? 2 : 1); ++ch) {
+        float peak = 0.0f;
+        for (int n = 0; n < io.numSamples; ++n) peak = std::max(peak, std::fabs(io.channels[ch][n]));
+        inputPeak_[ch].store(peak, std::memory_order_relaxed);
+    }
+    if (!hasIn2) inputPeak_[1].store(0.0f, std::memory_order_relaxed);
 
     // Latensmätning: proben äger utgången (klick ut, lyssnar på ingången).
-    // Effektkedjan hoppas över, men limitern körs alltid.
-    const bool probing = probe_.process(io.channels[src], io.channels[src], io.numSamples);
+    // Effektkedjan och ingångsblandningen hoppas över, men limitern körs alltid.
+    const int probeSrc = (hasIn2 && input_.mode.load(std::memory_order_relaxed) == InputMixer::Input2) ? 1 : 0;
+    const bool probing = probe_.process(io.channels[probeSrc], io.channels[0], io.numSamples);
+    if (!probing)
+        input_.process(io.channels[0], hasIn2 ? io.channels[1] : nullptr, io.channels[0], io.numSamples);
 
-    for (int ch = 0; ch < io.numChannels; ++ch)
-        if (ch != src)
-            std::memcpy(io.channels[ch], io.channels[src], sizeof(float) * static_cast<size_t>(io.numSamples));
+    for (int ch = 1; ch < io.numChannels; ++ch)
+        std::memcpy(io.channels[ch], io.channels[0], sizeof(float) * static_cast<size_t>(io.numSamples));
 
     // Kanaler utöver vad vi förberett för tystas (ska inte hända, men säkert).
     for (int ch = channels; ch < io.numChannels; ++ch)

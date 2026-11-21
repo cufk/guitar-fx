@@ -50,22 +50,49 @@ GuitarFXEditor::GuitarFXEditor(GuitarFXProcessor& p)
     : AudioProcessorEditor(&p), processor_(p),
       inputGain_ ("IN",    p.engine().inputGain().gainDb,  0.1,  " dB", 0.0),
       outputGain_("UT",    p.engine().outputGain().gainDb, 0.1,  " dB", 0.0),
+      balance_   ("Balans 1-2", p.engine().input().balance,   0.01, "",    0.5),
+      align_     ("Justering",  p.engine().input().alignMs,   0.01, " ms", 0.0),
       drive_     ("Drive", p.distortion().driveDb,         0.1,  " dB", 18.0),
       tight_     ("Tight", p.distortion().tightHz,         1.0,  " Hz", 120.0),
       tone_      ("Ton",   p.distortion().tone,            0.01, "",    0.5),
       distLevel_ (juce::String::fromUTF8("Nivå"),  p.distortion().levelDb,         0.1,  " dB", -6.0),
       cabLevel_  (juce::String::fromUTF8("Nivå"),  p.cabinet().levelDb,            0.1,  " dB", 0.0) {
 
-    for (auto* k : { &inputGain_, &outputGain_, &drive_, &tight_, &tone_, &distLevel_, &cabLevel_ })
+    for (auto* k : { &inputGain_, &outputGain_, &drive_, &tight_, &tone_, &distLevel_, &cabLevel_, &balance_, &align_ })
         addAndMakeVisible(k);
 
-    inputChannel_.addItem(juce::String::fromUTF8("Ingång 1"), 1);
-    inputChannel_.addItem(juce::String::fromUTF8("Ingång 2"), 2);
-    inputChannel_.setSelectedId(processor_.engine().inputChannel.load() + 1, juce::dontSendNotification);
-    inputChannel_.onChange = [this] {
-        processor_.engine().inputChannel.store(inputChannel_.getSelectedId() - 1);
+    auto& in = processor_.engine().input();
+    inputSource_.addItem(juce::String::fromUTF8("Ingång 1"), 1);
+    inputSource_.addItem(juce::String::fromUTF8("Ingång 2"), 2);
+    inputSource_.addItem(juce::String::fromUTF8("Blanda 1 + 2"), 3);
+    inputSource_.setSelectedId(in.mode.load() + 1, juce::dontSendNotification);
+    inputSource_.onChange = [this] {
+        processor_.engine().input().mode.store(inputSource_.getSelectedId() - 1);
     };
-    addAndMakeVisible(inputChannel_);
+    addAndMakeVisible(inputSource_);
+
+    for (auto* b : { &invert1_, &invert2_ }) {
+        b->setClickingTogglesState(true);
+        b->setColour(juce::TextButton::buttonOnColourId, kWarn.darker(0.4f));
+        b->setTooltip(juce::String::fromUTF8("Vänd polariteten. Prova om blandningen låter tunn, eller mot rundgång."));
+        addAndMakeVisible(b);
+    }
+    invert1_.setToggleState(in.invert1.load(), juce::dontSendNotification);
+    invert2_.setToggleState(in.invert2.load(), juce::dontSendNotification);
+    invert1_.onClick = [this] { processor_.engine().input().invert1.store(invert1_.getToggleState()); };
+    invert2_.onClick = [this] { processor_.engine().input().invert2.store(invert2_.getToggleState()); };
+
+    autoAlign_.onClick = [this] {
+        processor_.engine().input().requestCapture();
+        alignText_ = juce::String::fromUTF8("Spela nu – lyssnar på båda ingångarna...");
+        alignColour_ = kWarn;
+    };
+    addAndMakeVisible(autoAlign_);
+    alignStatus_.setJustificationType(juce::Justification::centred);
+    alignStatus_.setMinimumHorizontalScale(0.7f);
+    addAndMakeVisible(alignStatus_);
+    alignText_ = juce::String::fromUTF8("Mikrofon + inbyggd: välj Blanda och tryck Auto-justera medan du spelar.");
+    alignColour_ = kDim;
 
     latencyButton_.onClick = [this] {
         auto& probe = processor_.engine().latencyProbe();
@@ -75,7 +102,8 @@ GuitarFXEditor::GuitarFXEditor(GuitarFXProcessor& p)
             juce::MessageBoxOptions()
                 .withIconType(juce::MessageBoxIconType::WarningIcon)
                 .withTitle(juce::String::fromUTF8("Mät latens"))
-                .withMessage(juce::String::fromUTF8("Koppla en kabel från utgång 1 till vald ingång (INST av, gain lågt).\n"
+                .withMessage(juce::String::fromUTF8("Koppla en kabel från utgång 1 till ingång 1 (ingång 2 om källan är Ingång 2).\n"
+                             "INST av, 48V av, gain lågt, Direct Monitor av.\n"
                              "Koppla bort förstärkare/högtalare – mätningen skickar ut klick på -12 dBFS.\n"
                              "Mätningen tar ca 4 sekunder."))
                 .withButton("Starta", 1)
@@ -108,8 +136,8 @@ GuitarFXEditor::GuitarFXEditor(GuitarFXProcessor& p)
     addAndMakeVisible(irName_);
 
     setResizable(true, true);
-    setResizeLimits(720, 440, 2400, 1600);
-    setSize(1000, 560);
+    setResizeLimits(1000, 520, 2400, 1600);
+    setSize(1240, 600);
     startTimerHz(30);
 }
 
@@ -158,10 +186,41 @@ void GuitarFXEditor::updateLatencyLabel() {
     latencyButton_.setButtonText(probe.isActive() ? "Avbryt" : juce::String::fromUTF8("Mät latens"));
 }
 
+void GuitarFXEditor::updateAlignStatus() {
+    auto& in = processor_.engine().input();
+    if (auto r = in.analyseCapture()) {
+        if (r->correlation < 0.3) {
+            alignText_ = juce::String::fromUTF8("Osäkert resultat – spela starkare och kontrollera att båda ingångarna har signal.");
+            alignColour_ = kDanger;
+        } else {
+            in.apply(*r);
+            const double ms = std::abs(r->lagSamples) / in.sampleRate() * 1000.0;
+            alignText_ = juce::String::fromUTF8("Justerat: ") + juce::String(ms, 2) + " ms"
+                       + (r->invert ? juce::String::fromUTF8(", ingång 2 vänd") : juce::String())
+                       + (r->correlation < 0.6 ? juce::String::fromUTF8(" (osäkert – lyssna)") : juce::String());
+            alignColour_ = r->correlation < 0.6 ? kWarn : kGood;
+        }
+    }
+    alignStatus_.setText(alignText_, juce::dontSendNotification);
+    alignStatus_.setColour(juce::Label::textColourId, alignColour_);
+    autoAlign_.setEnabled(!in.isCapturing());
+
+    const bool blend = in.mode.load() == gfx::InputMixer::Blend;
+    balance_.setEnabled(blend);
+    align_.setEnabled(blend);
+    balance_.setAlpha(blend ? 1.0f : 0.4f);
+    align_.setAlpha(blend ? 1.0f : 0.4f);
+    invert1_.setToggleState(in.invert1.load(), juce::dontSendNotification);
+    invert2_.setToggleState(in.invert2.load(), juce::dontSendNotification);
+    if (!inputSource_.isPopupActive())
+        inputSource_.setSelectedId(in.mode.load() + 1, juce::dontSendNotification);
+}
+
 void GuitarFXEditor::timerCallback() {
     auto& e = processor_.engine();
     // Peak hold med fall-off för läsbara mätare.
-    inPeakHold_  = juce::jmax(e.inputPeak(),  inPeakHold_  * 0.92f);
+    for (int ch = 0; ch < 2; ++ch)
+        inPeakHold_[ch] = juce::jmax(e.inputPeak(ch), inPeakHold_[ch] * 0.92f);
     outPeakHold_ = juce::jmax(e.outputPeak(), outPeakHold_ * 0.92f);
 
     // Watchdog: har ljudmotorn levererat nya block sedan förra kollen?
@@ -170,8 +229,9 @@ void GuitarFXEditor::timerCallback() {
     lastBlockCount_ = blocks;
 
     // Synka GUI med motorn (t.ex. efter att värden laddat state).
-    for (auto* k : { &inputGain_, &outputGain_, &drive_, &tight_, &tone_, &distLevel_, &cabLevel_ })
+    for (auto* k : { &inputGain_, &outputGain_, &drive_, &tight_, &tone_, &distLevel_, &cabLevel_, &balance_, &align_ })
         k->syncFromParameter();
+    updateAlignStatus();
     distOn_.setToggleState(e.chain().isEnabled(processor_.distortionSlot()), juce::dontSendNotification);
     cabOn_.setToggleState(e.chain().isEnabled(processor_.cabinetSlot()), juce::dontSendNotification);
     if (!distMode_.isPopupActive())
@@ -207,29 +267,33 @@ void GuitarFXEditor::drawMeter(juce::Graphics& g, juce::Rectangle<int> r, const 
 void GuitarFXEditor::paint(juce::Graphics& g) {
     g.fillAll(kBg);
 
-    for (auto* panel : { &levelPanel_, &distPanel_, &cabPanel_ }) {
+    for (auto* panel : { &inputPanel_, &levelPanel_, &distPanel_, &cabPanel_ }) {
         g.setColour(kPanel);
         g.fillRoundedRectangle(panel->toFloat(), 10.0f);
     }
     g.setColour(kDim);
     g.setFont(juce::FontOptions(14.0f, juce::Font::bold));
-    g.drawText(juce::String::fromUTF8("NIVÅ"), levelPanel_.withHeight(36), juce::Justification::centred);
+    g.drawText(juce::String::fromUTF8("INGÅNG"), inputPanel_.withHeight(32), juce::Justification::centred);
+    g.drawText(juce::String::fromUTF8("NIVÅ"), levelPanel_.withHeight(32), juce::Justification::centred);
 
     auto& e = processor_.engine();
     auto meters = meterArea_;
-    const int w = (meters.getWidth() - 12) / 2;
-    drawMeter(g, meters.removeFromLeft(w), "IN", inPeakHold_);
-    meters.removeFromLeft(12);
+    const int w = (meters.getWidth() - 16) / 3;
+    drawMeter(g, meters.removeFromLeft(w), "IN 1", inPeakHold_[0]);
+    meters.removeFromLeft(8);
+    drawMeter(g, meters.removeFromLeft(w), "IN 2", inPeakHold_[1]);
+    meters.removeFromLeft(8);
     drawMeter(g, meters, "UT", outPeakHold_);
 
     // Statusrad.
     const double cpu = processor_.cpuLoad() * 100.0;
     const float gr = e.limiterGainReductionDb();
-    const double latMs = e.spec().sampleRate > 0 ? 1000.0 * e.latencySamples() / e.spec().sampleRate : 0.0;
+    const int latSmp = e.chain().activeLatencySamples();
+    const double latMs = e.spec().sampleRate > 0 ? 1000.0 * latSmp / e.spec().sampleRate : 0.0;
     juce::String text;
     text << "CPU " << juce::String(cpu, 0) << "%"
          << "   |   Limiter " << juce::String(gr, 1) << " dB"
-         << "   |   Effektlatens " << e.latencySamples() << " smp (" << juce::String(latMs, 2) << " ms)"
+         << "   |   Effektlatens " << latSmp << " smp (" << juce::String(latMs, 2) << " ms)"
          << juce::String::fromUTF8("   |   Återställningar ") << static_cast<int>(e.recoveryCount());
 
     g.setColour(cpu > 70.0 ? kDanger : cpu > 50.0 ? kWarn : kText);
@@ -255,20 +319,20 @@ void GuitarFXEditor::resized() {
     statusArea_ = area.removeFromBottom(32);
     area.removeFromBottom(8);
 
-    // Toppraden: ingång + latensmätning.
+    // Toppraden: latensmätning.
     auto top = area.removeFromTop(36);
-    inputChannel_.setBounds(top.removeFromLeft(160));
-    top.removeFromLeft(16);
     latencyButton_.setBounds(top.removeFromLeft(130));
     top.removeFromLeft(12);
     latencyLabel_.setBounds(top);
     area.removeFromTop(12);
 
-    meterArea_ = area.removeFromRight(110);
+    meterArea_ = area.removeFromRight(150);
     area.removeFromRight(12);
 
     const int gap = 12;
-    const int levelW = juce::jmax(120, area.getWidth() / 6);
+    inputPanel_ = area.removeFromLeft(juce::jmax(250, area.getWidth() * 26 / 100));
+    area.removeFromLeft(gap);
+    const int levelW = juce::jmax(110, area.getWidth() / 7);
     levelPanel_ = area.removeFromLeft(levelW);
     area.removeFromLeft(gap);
     const int cabW = juce::jmax(180, (area.getWidth() - gap) * 2 / 7);
@@ -276,6 +340,25 @@ void GuitarFXEditor::resized() {
     area.removeFromRight(gap);
     distPanel_ = area;
 
+    // Ingång: källa, balans/justering, polaritet, auto-justering.
+    {
+        auto r = inputPanel_.reduced(10);
+        r.removeFromTop(24);
+        inputSource_.setBounds(r.removeFromTop(32));
+        r.removeFromTop(8);
+        alignStatus_.setBounds(r.removeFromBottom(44));
+        autoAlign_.setBounds(r.removeFromBottom(36));
+        r.removeFromBottom(8);
+        auto pol = r.removeFromBottom(32);
+        invert1_.setBounds(pol.removeFromLeft(pol.getWidth() / 2 - 4));
+        pol.removeFromLeft(8);
+        invert2_.setBounds(pol);
+        r.removeFromBottom(8);
+        const int kh = juce::jmin(r.getHeight(), r.getWidth() / 2 + 40);
+        auto row = r.withSizeKeepingCentre(r.getWidth(), kh);
+        balance_.setBounds(row.removeFromLeft(row.getWidth() / 2));
+        align_.setBounds(row);
+    }
     // Nivå: IN över UT.
     {
         auto r = levelPanel_.reduced(8);

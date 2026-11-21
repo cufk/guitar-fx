@@ -513,6 +513,152 @@ int main() {
         CHECK(e.latencyProbe().status() == gfx::LatencyProbe::Status::NoSignal);
     });
 
+
+    // ----------------------------------------------------------------- Ingångssteg
+    run("Ingång: källval 1/2 och mono-buss", [] {
+        gfx::Engine e;
+        e.prepare({ kSr, kBlock, 2 });
+        const int n = 4800;
+        Stereo s(n);
+        sine(s.l, 0.3f, 220.0f);
+        sine(s.r, 0.2f, 440.0f);
+        const auto in1 = s.l, in2 = s.r;
+        e.input().mode = gfx::InputMixer::Input2;
+        e.input().reset(); // hoppa direkt till målvärdet (ingen glidning) för exakt jämförelse
+        runEngine(e, s, n);
+        float err = 0.0f;
+        for (int i = 0; i < n; ++i) err = std::max({ err, std::fabs(s.l[size_t(i)] - in2[size_t(i)]), std::fabs(s.r[size_t(i)] - in2[size_t(i)]) });
+        CHECK(err < 1.0e-6f);
+        CHECK(std::fabs(e.inputPeak(0) - 0.3f) < 0.01f);
+        CHECK(std::fabs(e.inputPeak(1) - 0.2f) < 0.01f);
+
+        // Mono-buss: ingång 2 saknas -> ingång 1 används oavsett läge.
+        gfx::Engine m;
+        m.prepare({ kSr, kBlock, 1 });
+        m.input().mode = gfx::InputMixer::Blend;
+        std::vector<float> mono(in1);
+        float* p[1];
+        for (int start = 0; start < n; start += kBlock) {
+            p[0] = mono.data() + start;
+            m.process({ p, 1, std::min(kBlock, n - start) });
+        }
+        float merr = 0.0f;
+        for (int i = 4800 / 2; i < n; ++i) merr = std::max(merr, std::fabs(mono[size_t(i)] - in1[size_t(i)]));
+        CHECK(merr < 1.0e-5f);
+    });
+
+    run("Ingång: byte av källa och polaritet glider utan klick", [] {
+        gfx::Engine e;
+        e.prepare({ kSr, kBlock, 2 });
+        const int n = 19200;
+        Stereo s(n);
+        std::fill(s.l.begin(), s.l.end(), 0.4f);  // DC gör hopp tydliga
+        std::fill(s.r.begin(), s.r.end(), -0.3f);
+        for (int start = 0, b = 0; start < n; start += kBlock, ++b) {
+            if (b == 40)  e.input().mode = gfx::InputMixer::Input2;
+            if (b == 100) e.input().mode = gfx::InputMixer::Blend;
+            if (b == 160) e.input().invert2 = true;
+            if (b == 220) e.input().alignMs.set(3.0f);
+            e.process(s.view(start, kBlock));
+        }
+        float maxStep = 0.0f;
+        for (int i = 1; i < n; ++i) maxStep = std::max(maxStep, std::fabs(s.l[size_t(i)] - s.l[size_t(i - 1)]));
+        CHECK(maxStep < 0.01f);
+        // Blanda i mitten, ingång 2 vänd: 0.4*0.707 + 0.3*0.707
+        CHECK(std::fabs(s.l[size_t(n - 1)] - 0.7f * 0.70710678f) < 1.0e-3f);
+    });
+
+    run("Ingång: analys hittar fördröjning (bråkdel) och omvänd polaritet", [] {
+        // Simulerad gitarr: filtrerat brus. Ingång 2 = -0.5 * ingång 1, 37,3 samples senare + brus.
+        std::mt19937 rng(11);
+        std::normal_distribution<float> nd(0.0f, 1.0f);
+        const int n = 48000;
+        std::vector<float> src(static_cast<size_t>(n + 100)), a(static_cast<size_t>(n)), b(static_cast<size_t>(n));
+        float lp = 0.0f;
+        for (auto& v : src) { lp += 0.3f * (nd(rng) - lp); v = lp; }
+        const double lag = 37.3;
+        for (int i = 0; i < n; ++i) {
+            a[size_t(i)] = src[size_t(i + 50)];
+            const double t = i + 50 - lag;
+            const int k = int(std::floor(t));
+            const float f = float(t - k);
+            b[size_t(i)] = -0.5f * (src[size_t(k)] + f * (src[size_t(k + 1)] - src[size_t(k)])) + 0.01f * nd(rng);
+        }
+        const auto r = gfx::analyseAlignment(a.data(), b.data(), n, 240);
+        std::printf("       hittade %.2f samples, %s, korrelation %.2f\n", r.lagSamples, r.invert ? "omvänd" : "normal", r.correlation);
+        CHECK(std::fabs(r.lagSamples - lag) < 0.5);
+        CHECK(r.invert);
+        CHECK(r.correlation > 0.8);
+
+        // Okorrelerade signaler ger låg korrelation.
+        std::vector<float> c(static_cast<size_t>(n));
+        for (auto& v : c) v = nd(rng);
+        CHECK(gfx::analyseAlignment(a.data(), c.data(), n, 240).correlation < 0.2);
+    });
+
+    run("Ingång: automatisk justering i motorn ger koherent summa", [] {
+        // Mikrofon (ingång 1) kommer 20 samples efter den inbyggda (ingång 2) och har omvänd polaritet.
+        gfx::Engine e;
+        e.prepare({ kSr, kBlock, 2 });
+        e.input().mode = gfx::InputMixer::Blend;
+        e.input().reset();
+        std::mt19937 rng(5);
+        std::normal_distribution<float> nd(0.0f, 0.1f);
+        const int n = 48000 * 3, d = 20;
+        std::vector<float> src(static_cast<size_t>(n + d));
+        float lp = 0.0f;
+        for (auto& v : src) { lp += 0.3f * (nd(rng) - lp); v = lp; }
+        Stereo s(n);
+        auto fill = [&] {
+            for (int i = 0; i < n; ++i) { s.l[size_t(i)] = -src[size_t(i)]; s.r[size_t(i)] = src[size_t(i + d)]; }
+        };
+        auto rms = [&](size_t from) {
+            double acc = 0.0;
+            for (size_t i = from; i < s.l.size(); ++i) acc += double(s.l[i]) * s.l[i];
+            return std::sqrt(acc / double(s.l.size() - from));
+        };
+        fill();
+        e.input().requestCapture();
+        runEngine(e, s, n);
+        const double before = rms(size_t(n / 2)); // utan justering: nästan utsläckning
+        const auto r = e.input().analyseCapture();
+        CHECK(r.has_value());
+        if (!r) return;
+        CHECK(std::fabs(r->lagSamples + d) < 0.5); // ingång 2 är tidigare -> negativ lag
+        CHECK(r->invert);
+        e.input().apply(*r);
+        CHECK(e.input().alignMs.get() > 0.0f); // fördröjer ingång 2
+        fill();
+        runEngine(e, s, n);
+        const double after = rms(size_t(n / 2));
+        double single = 0.0;
+        for (size_t i = size_t(n / 2); i < size_t(n); ++i) single += double(src[i]) * src[i];
+        single = std::sqrt(single / double(n - n / 2));
+        // Perfekt koherent summa vid balans i mitten: 2 * 0.707 = 1.414 x en källa.
+        const double ratio = after / single;
+        std::printf("       före %.2f x, efter %.3f x en källa (ideal 1.414)\n", before / single, ratio);
+        CHECK(std::fabs(ratio - 1.41421356) < 0.03);
+        CHECK(after > before * 1.2);
+    });
+
+    run("Ingång: process() allokerar inget minne (inkl. inspelning för analys)", [] {
+        gfx::Engine e;
+        e.prepare({ kSr, kBlock, 2 });
+        Stereo s(kBlock * 1000);
+        sine(s.l, 0.3f, 220.0f);
+        sine(s.r, 0.3f, 220.0f);
+        e.input().requestCapture();
+        NoAllocScope scope;
+        for (int b = 0; b < 1000; ++b) {
+            if (b == 100) e.input().mode = gfx::InputMixer::Blend;
+            if (b == 200) e.input().alignMs.set(-4.0f);
+            if (b == 300) e.input().invert1 = true;
+            e.process(s.view(b * kBlock, kBlock));
+        }
+        CHECK(scope.count() == 0);
+        CHECK(allFiniteAndBounded(s, 1.0f));
+    });
+
     std::printf("\n%s (%d fel)\n", gFailures == 0 ? "ALLA TESTER OK" : "TESTER MISSLYCKADES", gFailures);
     return gFailures == 0 ? 0 : 1;
 }

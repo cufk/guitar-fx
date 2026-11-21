@@ -33,7 +33,8 @@ public:
     int  size() const { return numSlots_; }
     Effect* effect(int slot) const { return slots_[static_cast<size_t>(slot)].effect.get(); }
 
-    int latencySamples() const;
+    int latencySamples() const;        // alla steg (för värdens latenskompensation)
+    int activeLatencySamples() const;  // bara påslagna steg (för statusvisning)
 
 private:
     struct Slot {
