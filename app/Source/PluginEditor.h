@@ -1,28 +1,15 @@
 #pragma once
-// Scen-GUI, version 1: stora reglage och tydliga mätare.
-//  - Ingång: mikrofon / inbyggd / blanda, polaritet, tidsjustering (auto)
-//  - In/ut-nivå (peak per ingång) med klippvarning
-//  - Distortion (läge, drive, tight, ton, nivå) och kabinett (IR, nivå) med stora på/av-knappar
-//  - Latensmätning (loopback-kabel ut -> in)
-//  - Limiterns nedreglering, CPU-last och antal automatiska återställningar (NaN-skydd)
-//  - Varning om ljudmotorn har slutat leverera block (watchdog)
+// Scen-GUI v2 i StemSplitter-stil:
+//   sidhuvud  – ingång/nivåer (popover), titel med aktivt preset, meny
+//   vänster   – effekterna som färgade rader (PÅ, I PRESET, reglage)
+//   höger     – presets som stora knappar (ett i taget, igen = grundljud)
+//   nederst   – nivåmätare, föregående/nästa preset, CPU/limiter/MIDI
+// Tangenter: 1–9 = preset, 0/Esc = grundljud, ←/→ = föregående/nästa.
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "PluginProcessor.h"
-
-// Ratt kopplad direkt till en gfx::Parameter (atomic – säkert från GUI-tråden).
-class ParamKnob final : public juce::Component {
-public:
-    ParamKnob(const juce::String& name, gfx::Parameter& p, double step, const juce::String& suffix,
-              double defaultValue);
-    void syncFromParameter();   // t.ex. efter att state laddats
-    void resized() override;
-
-private:
-    gfx::Parameter& param_;
-    juce::Slider slider_;
-    juce::Label label_;
-};
+#include "ui/Theme.h"
+#include "ui/Widgets.h"
 
 class GuitarFXEditor final : public juce::AudioProcessorEditor, private juce::Timer {
 public:
@@ -32,59 +19,29 @@ public:
     void paint(juce::Graphics&) override;
     void paintOverChildren(juce::Graphics&) override;
     void resized() override;
+    bool keyPressed(const juce::KeyPress&) override;
+    void visibilityChanged() override;
 
 private:
     void timerCallback() override;
-    void drawMeter(juce::Graphics&, juce::Rectangle<int>, const juce::String& label, float peak);
-    void setupToggle(juce::TextButton& b, int slot);
-    void chooseImpulseResponse();
-    void updateLatencyLabel();
-    void updateAlignStatus();
+    void showMoreMenu();
+    void startLatencyMeasurement();
+    void exportPresets();
+    void importPresets();
+    juce::String latencyText() const;
 
     GuitarFXProcessor& processor_;
-
-    juce::ComboBox inputSource_;
-    juce::TextButton latencyButton_ { juce::String::fromUTF8("Mät latens") };
-    juce::Label latencyLabel_;
-
-    ParamKnob inputGain_, outputGain_;
-
-    ParamKnob balance_, align_;
-    juce::TextButton invert1_ { juce::String::fromUTF8("Ø Ingång 1") }, invert2_ { juce::String::fromUTF8("Ø Ingång 2") };
-    juce::TextButton autoAlign_ { "Auto-justera" };
-    juce::Label alignStatus_;
-    juce::String alignText_;
-    juce::Colour alignColour_;
-
-    juce::TextButton distOn_ { "DISTORTION" };
-    juce::ComboBox distMode_;
-    ParamKnob drive_, tight_, tone_, distLevel_;
-
-    juce::TextButton cabOn_ { "KABINETT" };
-    juce::TextButton loadIr_ { "Ladda IR..." }, builtInIr_ { "Inbyggd" };
-    juce::Label irName_;
-    ParamKnob cabLevel_;
-
-    // Generisk effektpanel: på/av-knapp + rattar (chorus, flanger, reverb).
-    struct FxPanel {
-        juce::TextButton onButton;
-        std::vector<std::unique_ptr<ParamKnob>> knobs;
-        juce::Rectangle<int> bounds;
-        int slot = -1;
-        int knobsPerRow = 4;
-    };
-    FxPanel& addFxPanel(const juce::String& title, int slot, int knobsPerRow);
-    void layoutFxPanel(FxPanel& p);
-    std::vector<std::unique_ptr<FxPanel>> fxPanels_;
-
+    ui::LookAndFeel lnf_;
+    ui::HeaderBar header_;
+    ui::EffectList effects_;
+    ui::PresetPanel presets_;
+    ui::BottomBar bottom_;
+    juce::TooltipWindow tooltips_ { this, 600 };
     std::unique_ptr<juce::FileChooser> chooser_;
-    juce::String irError_;
 
-    juce::Rectangle<int> inputPanel_, levelPanel_, distPanel_, cabPanel_, meterArea_, statusArea_;
-
-    float inPeakHold_[2] { 0.0f, 0.0f }, outPeakHold_ = 0.0f;
     uint64_t lastBlockCount_ = 0;
-    int stalledTicks_ = 0;
+    int stalledTicks_ = 0, tick_ = 0;
+    bool dark_ = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(GuitarFXEditor)
 };

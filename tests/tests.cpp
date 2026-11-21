@@ -833,6 +833,7 @@ int main() {
     run("Kedja: alla effekter på samtidigt, av/på, realtidssäkert", [] {
         gfx::Engine e;
         std::vector<int> slots;
+        slots.push_back(e.chain().add(std::make_unique<gfx::Eq>(), true));
         slots.push_back(e.chain().add(std::make_unique<gfx::Distortion>(), false));
         slots.push_back(e.chain().add(std::make_unique<gfx::Cabinet>(), false));
         slots.push_back(e.chain().add(std::make_unique<gfx::Chorus>()));
