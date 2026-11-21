@@ -58,7 +58,18 @@ int EffectChain::activeLatencySamples() const {
 void EffectChain::process(AudioBufferView buf) {
     for (int i = 0; i < numSlots_; ++i) {
         auto& s = slots_[static_cast<size_t>(i)];
-        s.mix.setTarget(s.enabled.load(std::memory_order_relaxed) ? 1.0f : 0.0f);
+        const bool on = s.enabled.load(std::memory_order_relaxed);
+
+        // Effekter med svans: ingen crossfade – ingången stängs och svansen klingar ut.
+        if (s.effect->hasTail()) {
+            if (on && s.wasFullyOff) { s.effect->reset(); s.wasFullyOff = false; }
+            s.effect->setInputActive(on);
+            if (!on && (s.wasFullyOff || s.effect->tailFinished())) { s.wasFullyOff = true; continue; }
+            s.effect->process(buf);
+            continue;
+        }
+
+        s.mix.setTarget(on ? 1.0f : 0.0f);
 
         // Helt avstängd: hoppa över (sparar CPU).
         if (!s.mix.isSmoothing() && s.mix.target() == 0.0f) {

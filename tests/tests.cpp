@@ -8,6 +8,8 @@
 #include "dsp/core/Oversampler.h"
 #include "dsp/effects/Cabinet.h"
 #include "dsp/effects/Chorus.h"
+#include "dsp/effects/Eq.h"
+#include "engine/Rig.h"
 #include "dsp/effects/Flanger.h"
 #include "dsp/effects/Reverb.h"
 #include "dsp/effects/Distortion.h"
@@ -672,6 +674,12 @@ int main() {
         std::function<void(gfx::Effect&)> setDry;
     };
     const std::vector<FxCase> fxCases = {
+        { "EQ",
+          [] { return std::make_unique<gfx::Eq>(); },
+          [](gfx::Effect& e, bool hi) { auto& q = static_cast<gfx::Eq&>(e);
+              for (auto* p : { &q.lowCutHz, &q.lowGainDb, &q.midFreqHz, &q.midGainDb, &q.highGainDb, &q.notchHz, &q.notchDepthDb })
+                  p->set(hi ? p->max() : p->min()); },
+          [](gfx::Effect& e) { auto& q = static_cast<gfx::Eq&>(e); q.lowCutHz.set(20.0f); } },
         { "Chorus",
           [] { return std::make_unique<gfx::Chorus>(); },
           [](gfx::Effect& e, bool hi) { auto& c = static_cast<gfx::Chorus&>(e);
@@ -726,6 +734,7 @@ int main() {
             }
         });
 
+        if (std::string(fc.name) != "EQ")
         run((std::string(fc.name) + ": mix 0 ger exakt genomgång").c_str(), [&] {
             auto fx = fc.make();
             fc.setDry(*fx);
@@ -824,6 +833,7 @@ int main() {
     run("Kedja: alla effekter på samtidigt, av/på, realtidssäkert", [] {
         gfx::Engine e;
         std::vector<int> slots;
+        slots.push_back(e.chain().add(std::make_unique<gfx::Eq>(), true));
         slots.push_back(e.chain().add(std::make_unique<gfx::Distortion>(), false));
         slots.push_back(e.chain().add(std::make_unique<gfx::Cabinet>(), false));
         slots.push_back(e.chain().add(std::make_unique<gfx::Chorus>()));
@@ -840,6 +850,151 @@ int main() {
         CHECK(scope.count() == 0);
         CHECK(allFiniteAndBounded(s, 1.0f));
         CHECK(e.recoveryCount() == 0);
+    });
+
+
+    run("EQ: platt i mitten, notch dämpar sin frekvens, bas/diskant verkar", [] {
+        auto gainAt = [](gfx::Eq& q, double hz) {
+            q.prepare({ kSr, kBlock, 2 });
+            Stereo s(48000);
+            sine(s.l, 0.25f, float(hz));
+            s.r = s.l;
+            runEffect(q, s);
+            return gfx::gainToDb(toneAmplitude(s.l, 24000, 19200, hz) / 0.25f);
+        };
+        gfx::Eq flat;
+        CHECK(std::fabs(gainAt(flat, 1000.0)) < 0.3f);
+        gfx::Eq notch;
+        notch.notchHz.set(500.0f); notch.notchDepthDb.set(-24.0f);
+        CHECK(gainAt(notch, 500.0) < -20.0f);
+        CHECK(std::fabs(gainAt(notch, 2000.0)) < 0.5f);  // smal: påverkar inte långt bort
+        gfx::Eq tilt;
+        tilt.lowGainDb.set(9.0f); tilt.highGainDb.set(-9.0f); tilt.lowCutHz.set(20.0f);
+        CHECK(gainAt(tilt, 60.0) > 6.0f);
+        CHECK(gainAt(tilt, 12000.0) < -6.0f);
+        gfx::Eq cut;
+        cut.lowCutHz.set(300.0f);
+        CHECK(gainAt(cut, 60.0) < -20.0f);
+    });
+
+    run("Reverb: svansen klingar ut när den stängs av, torr signal oförändrad", [] {
+        gfx::Engine e;
+        auto rv = std::make_unique<gfx::Reverb>();
+        rv->decaySec.set(2.0f); rv->mix.set(0.5f);
+        const int slot = e.chain().add(std::move(rv), true);
+        e.prepare({ kSr, kBlock, 2 });
+        // 1 s brus, sedan tystnad; reverben stängs av precis när insignalen tystnar.
+        const int n = 48000 * 3;
+        Stereo s(n);
+        std::mt19937 rng(9);
+        std::uniform_real_distribution<float> d(-0.3f, 0.3f);
+        for (int i = 0; i < 48000; ++i) s.l[size_t(i)] = s.r[size_t(i)] = d(rng);
+        for (int start = 0; start < n; start += kBlock) {
+            if (start == 48000) e.chain().setEnabled(slot, false);
+            e.process(s.view(start, kBlock));
+        }
+        auto peakIn = [&](int from, int to) { float p = 0; for (int i = from; i < to; ++i) p = std::max(p, std::fabs(s.l[size_t(i)])); return p; };
+        const float tailEarly = peakIn(48000 + 2400, 48000 + 9600);   // 50–200 ms efter
+        const float tailLate  = peakIn(48000 * 3 - 4800, 48000 * 3);
+        std::printf("       svans 50–200 ms: %.3f, efter 2 s: %.5f\n", tailEarly, tailLate);
+        CHECK(tailEarly > 0.01f);          // klipps inte
+        CHECK(tailLate < tailEarly * 0.1f); // men klingar av
+
+        // Torr signal medan reverben är av (och svansen är slut): exakt genomgång.
+        Stereo silence(48000 * 3);
+        runEngine(e, silence, 48000 * 3);
+        Stereo t(9600);
+        sine(t.l, 0.3f, 440.0f);
+        const auto ref = t.l;
+        runEngine(e, t, 9600);
+        float err = 0.0f;
+        for (size_t i = 0; i < ref.size(); ++i) err = std::max(err, std::fabs(t.l[i] - ref[i]));
+        CHECK(err < 1.0e-5f);
+    });
+
+    run("Rig: preset tar över sina effekter, grundljudet styr resten", [] {
+        gfx::Engine e;
+        auto eq = std::make_unique<gfx::Eq>();
+        auto rv = std::make_unique<gfx::Reverb>();
+        auto ch = std::make_unique<gfx::Chorus>();
+        auto* eqp = eq.get(); auto* rvp = rv.get(); auto* chp = ch.get();
+        const int eqSlot = e.chain().add(std::move(eq), true);
+        const int rvSlot = e.chain().add(std::move(rv), true);
+        const int chSlot = e.chain().add(std::move(ch), false);
+        gfx::Rig rig(e.chain());
+        rig.addEffect({ "eq", "EQ", 0, eqSlot, { { "low", "Bas", "dB", &eqp->lowGainDb } } });
+        rig.addEffect({ "reverb", "Reverb", 0, rvSlot, { { "mix", "Mix", "", &rvp->mix }, { "decay", "Efterklang", "s", &rvp->decaySec } } });
+        rig.addEffect({ "chorus", "Chorus", 0, chSlot, { { "mix", "Mix", "", &chp->mix } } });
+        eqp->lowGainDb.set(3.0f); rvp->mix.set(0.2f);
+        rig.initBaseFromLive();
+
+        // Preset "Hall": större reverb + chorus på.
+        const int hall = rig.addPreset("Hall");
+        rig.activate(hall);
+        rig.setIncludedInActive("reverb", true);
+        rig.setIncludedInActive("chorus", true);
+        rvp->mix.set(0.5f); rvp->decaySec.set(5.0f); chp->mix.set(0.3f);
+        rig.syncFromLive();
+        CHECK(e.chain().isEnabled(chSlot));
+
+        // Ändra EQ medan Hall är aktivt -> går till grundljudet (EQ ingår inte i Hall).
+        eqp->lowGainDb.set(5.0f);
+        rig.syncFromLive();
+        CHECK(rig.base().at("eq").values.at("low") == 5.0f);
+
+        // Tillbaka till grundljudet: reverb som innan, chorus av, EQ behåller ändringen.
+        rig.select(hall); // samma igen => grundljud
+        CHECK(rig.activePreset() == -1);
+        CHECK(std::fabs(rvp->mix.get() - 0.2f) < 1e-6f);
+        CHECK(std::fabs(rvp->decaySec.get() - 2.0f) < 1e-6f);
+        CHECK(!e.chain().isEnabled(chSlot));
+        CHECK(std::fabs(eqp->lowGainDb.get() - 5.0f) < 1e-6f);
+
+        // Aktivera Hall igen: dess värden kommer tillbaka.
+        rig.select(hall);
+        CHECK(std::fabs(rvp->mix.get() - 0.5f) < 1e-6f);
+        CHECK(std::fabs(rvp->decaySec.get() - 5.0f) < 1e-6f);
+        CHECK(e.chain().isEnabled(chSlot));
+
+        // Ta bort chorus ur presetet -> följer grundljudet (av).
+        rig.setIncludedInActive("chorus", false);
+        CHECK(!e.chain().isEnabled(chSlot));
+        CHECK(!rig.activeIncludes("chorus"));
+    });
+
+    run("Rig: nästa/föregående, ta bort, flytta, duplicera, ladda", [] {
+        gfx::Engine e;
+        auto rv = std::make_unique<gfx::Reverb>();
+        auto* rvp = rv.get();
+        const int slot = e.chain().add(std::move(rv), false);
+        gfx::Rig rig(e.chain());
+        rig.addEffect({ "reverb", "Reverb", 0, slot, { { "mix", "Mix", "", &rvp->mix } } });
+        rig.initBaseFromLive();
+        for (const char* n : { "A", "B", "C" }) rig.addPreset(n);
+        rig.selectNext(); CHECK(rig.activePreset() == 0);
+        rig.selectNext(); rig.selectNext(); CHECK(rig.activePreset() == 2);
+        rig.selectNext(); CHECK(rig.activePreset() == -1);
+        rig.selectPrevious(); CHECK(rig.activePreset() == 2);
+
+        rig.activate(1);
+        rig.movePreset(1, 0);
+        CHECK(rig.activePreset() == 0 && rig.activeName() == "B");
+        const int dup = rig.duplicatePreset(0);
+        CHECK(dup == 1 && rig.presets()[1].name == "B (kopia)");
+        rig.removePreset(0);
+        CHECK(rig.activePreset() == -1);
+        CHECK(rig.presets().size() == 3);
+
+        // Ladda: okänd effekt och okänt värde ignoreras, saknat värde fylls från grundljudet.
+        gfx::Snapshot base { { "reverb", { true, { { "mix", 0.3f }, { "okand", 1.0f } } } } };
+        std::vector<gfx::Preset> presets { { "Stor", { { "reverb", { true, { { "mix", 0.7f } } } }, { "finnsinte", {} } } } };
+        rig.load(base, presets, 0);
+        CHECK(rig.activePreset() == 0);
+        CHECK(std::fabs(rvp->mix.get() - 0.7f) < 1e-6f);
+        CHECK(e.chain().isEnabled(slot));
+        CHECK(rig.presets()[0].overrides.size() == 1);
+        rig.select(0);
+        CHECK(std::fabs(rvp->mix.get() - 0.3f) < 1e-6f);
     });
 
     std::printf("\n%s (%d fel)\n", gFailures == 0 ? "ALLA TESTER OK" : "TESTER MISSLYCKADES", gFailures);

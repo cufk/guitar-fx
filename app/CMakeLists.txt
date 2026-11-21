@@ -40,7 +40,9 @@ juce_add_plugin(GuitarFX
 
 target_sources(GuitarFX PRIVATE
     Source/PluginProcessor.cpp
-    Source/PluginEditor.cpp)
+    Source/PluginEditor.cpp
+    Source/ui/Theme.cpp
+    Source/ui/Widgets.cpp)
 
 target_compile_definitions(GuitarFX PUBLIC
     JUCE_WEB_BROWSER=0
