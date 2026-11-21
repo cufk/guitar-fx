@@ -17,6 +17,7 @@
 #include "EffectChain.h"
 #include "dsp/core/Parameter.h"
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <string>
 #include <vector>
@@ -32,6 +33,7 @@ struct ParamSpec {
     int decimals = 2;
     bool logScale = false;    // för frekvenser/tider: reglaget följer en logaritmisk skala
     std::vector<std::string> choices;  // icke-tom => val (värde = index)
+    float defaultValue = 0.0f;         // fabriksvärde (dubbelklick i GUI:t återställer)
 };
 
 struct EffectSpec {
@@ -39,6 +41,7 @@ struct EffectSpec {
     uint32_t colour = 0xffed5429;      // ARGB, egen färg per effekt i GUI:t
     int slot = -1;                     // plats i EffectChain
     std::vector<ParamSpec> params;
+    std::function<float()> activity;   // valfri: t.ex. kompressorns nedreglering i dB (för GUI)
 };
 
 struct EffectState {

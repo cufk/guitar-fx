@@ -13,6 +13,8 @@
 #include "dsp/effects/Eq.h"
 #include "dsp/effects/Flanger.h"
 #include "dsp/effects/Reverb.h"
+#include "dsp/effects/Sustain.h"
+#include "dsp/effects/Widener.h"
 
 class GuitarFXProcessor final : public juce::AudioProcessor, private juce::Timer {
 public:
@@ -60,6 +62,9 @@ public:
     // Senast mottagna MIDI-meddelande (för att visa i GUI:t), t.ex. "PC 3".
     juce::String lastMidiDescription() const;
 
+    // Utseende: 0 = följ systemet, 1 = ljust, 2 = mörkt (sparas i state).
+    std::atomic<int> appearance { 0 };
+
 private:
     void timerCallback() override;
     void createFactoryPresets();
@@ -72,6 +77,8 @@ private:
     gfx::Chorus* chorus_ = nullptr;
     gfx::Flanger* flanger_ = nullptr;
     gfx::Reverb* reverb_ = nullptr;
+    gfx::Sustain* sustain_ = nullptr;
+    gfx::Widener* widener_ = nullptr;
     juce::File irFile_;
     juce::AudioProcessLoadMeasurer loadMeasurer_;
 

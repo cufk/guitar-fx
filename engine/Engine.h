@@ -43,6 +43,9 @@ public:
     EffectChain& chain()       { return chain_; }
     LatencyProbe& latencyProbe() { return probe_; }
     InputMixer& input()        { return input_; }
+    // Mono (summa) ut: alla utgångar får (L+R)/2. För när bara en kanal går till mixern –
+    // då hörs stereoeffekterna korrekt i stället för bara vänster sida.
+    std::atomic<bool> monoOutput { false };
 
     // --- Mätvärden för GUI (läses från valfri tråd) ---
     // Topp per fysisk ingång (0 eller 1), före blandning – för att ställa gain på ljudkortet.

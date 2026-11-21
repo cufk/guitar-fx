@@ -38,9 +38,18 @@ juce_add_plugin(GuitarFX
     REQUIRES_FULL_SCREEN          TRUE
     COPY_PLUGIN_AFTER_BUILD       FALSE)
 
+# Typsnitt (Inter, SIL Open Font License – se Resources/fonts/Inter-LICENSE.txt).
+juce_add_binary_data(GuitarFXFonts SOURCES
+    Resources/fonts/Inter-Light.ttf
+    Resources/fonts/Inter-Regular.ttf
+    Resources/fonts/Inter-SemiBold.ttf
+    Resources/fonts/Inter-Bold.ttf)
+
 target_sources(GuitarFX PRIVATE
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
+    Source/StandaloneApp.cpp
+    Source/ui/Icons.cpp
     Source/ui/Theme.cpp
     Source/ui/Widgets.cpp)
 
@@ -48,11 +57,13 @@ target_compile_definitions(GuitarFX PUBLIC
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
     JUCE_VST3_CAN_REPLACE_VST2=0
-    JUCE_DISPLAY_SPLASH_SCREEN=0)
+    JUCE_DISPLAY_SPLASH_SCREEN=0
+    JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1)   # eget appfönster, se StandaloneApp.cpp
 
 target_link_libraries(GuitarFX
     PRIVATE
         gfx_core
+        GuitarFXFonts
         juce::juce_audio_utils
         juce::juce_audio_processors
         juce::juce_dsp

@@ -78,6 +78,14 @@ void Engine::process(AudioBufferView io) {
 void Engine::processChunk(AudioBufferView buf) {
     inputGain_.process(buf);
     chain_.process(buf);
+    if (monoOutput.load(std::memory_order_relaxed) && buf.numChannels > 1) {
+        const float inv = 1.0f / static_cast<float>(buf.numChannels);
+        for (int n = 0; n < buf.numSamples; ++n) {
+            float sum = 0.0f;
+            for (int ch = 0; ch < buf.numChannels; ++ch) sum += buf.channels[ch][n];
+            for (int ch = 0; ch < buf.numChannels; ++ch) buf.channels[ch][n] = sum * inv;
+        }
+    }
     outputGain_.process(buf);
     limiter_.process(buf);
 

@@ -14,10 +14,15 @@ Driftsäkerhet live är huvudkravet. Svara på svenska.
 - Parametrar: `gfx::Parameter` (atomic) + `SmoothedValue` på ljudtråden.
 - Presets: `gfx::Rig` (engine/Rig.h) – grundljud + presets (ett i taget). Används bara från
   meddelandetråden; processorns timer kör `syncFromLive()` och MIDI-kommandon (50 Hz).
-- GUI: `app/Source/ui/` – StemSplitter-formspråket (Theme: färger, kort, MiniSlider;
-  Widgets: EffectRow, PresetPanel, InputPanel, HeaderBar, BottomBar).
-  Ny effekt = lägg till i kedjan + `rig_.addEffect({...})` i processorn; raden och
-  sparningen kommer automatiskt.
+- GUI: `app/Source/ui/` – monokromt formspråk (användarens inspiration: varm off-white,
+  beige rutor, svarta runda rattar med ljus prick, stora fetstilta rubriker, tunna stora
+  siffror; mörkt läge inverterar). Theme (palett, Inter-typsnitt, LookAndFeel inkl. ratt),
+  Icons (vektorikoner per effekt), Widgets (HeaderBar, StageView, EffectGrid, EffectPanel,
+  KnobTile, PresetBar, InputPanel). Ingen färg utom rött för varningar.
+  Ny effekt = lägg till i kedjan + `rig_.addEffect({...})` i processorn; ruta, rattar och
+  sparning kommer automatiskt.
+- Fristående app: eget fönster i `app/Source/StandaloneApp.cpp`
+  (JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP) – inbyggd titelrad, ljudinställningar via ⋯-menyn.
 
 ## Regler
 - process()/reset(): ingen allokering, inga lås, ingen loggning, ingen I/O.
@@ -36,10 +41,11 @@ Driftsäkerhet live är huvudkravet. Svara på svenska.
 - Offline: `build/tools/offline-render/gfx-render in.wav ut.wav`
 
 ## Nästa steg
-Se "Färdplan" i README.md. Klart: akustisk ingång, EQ med notch, chorus, flanger, reverb
-(FDN, utklingning vid bypass), presets (Rig) med MIDI/tangenter, GUI i StemSplitter-stil,
-distortion, kabinett-IR, latensmätare (5,60 ms rundtur, buffert 64).
-Nästa: kompressor och delay; MIDI learn.
+Se "Färdplan" i README.md. Klart: akustisk ingång, EQ med notch, sustain (kompressor),
+chorus, flanger, widener, reverb (FDN, utklingning vid bypass), mono-utgång, presets (Rig)
+med MIDI/tangenter, monokromt GUI med runda rattar, eget appfönster, distortion,
+kabinett-IR, latensmätare (5,60 ms rundtur, buffert 64).
+Nästa: delay; MIDI learn; scenläge för iPad.
 Känt: effekter före chorus bearbetar båda kanalerna fast signalen är mono (dubbel CPU) –
 värt att åtgärda före Raspberry Pi. getStateInformation läser Rig och antar
 meddelandetråden (gäller standalone; vissa plugin-värdar anropar från annan tråd).

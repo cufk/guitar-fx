@@ -1,9 +1,9 @@
 #pragma once
-// Scen-GUI v2 i StemSplitter-stil:
-//   sidhuvud  – ingång/nivåer (popover), titel med aktivt preset, meny
-//   vänster   – effekterna som färgade rader (PÅ, I PRESET, reglage)
-//   höger     – presets som stora knappar (ett i taget, igen = grundljud)
-//   nederst   – nivåmätare, föregående/nästa preset, CPU/limiter/MIDI
+// Scen-GUI v4, monokromt:
+//   sidhuvud  – stor rubrik med aktivt läge, ingång/utgång (popover), meny
+//   vänster   – ring av streck (utnivå) runt aktivt presetnummer, namn, bläddring, mätare
+//   höger     – effekterna som rutor + vald effekt med runda rattar
+//   nederst   – presets som piller (ett i taget, igen = grundljud)
 // Tangenter: 1–9 = preset, 0/Esc = grundljud, ←/→ = föregående/nästa.
 
 #include <juce_audio_processors/juce_audio_processors.h>
@@ -24,19 +24,21 @@ public:
 
 private:
     void timerCallback() override;
+    void applyAppearance(bool force);
     void showMoreMenu();
     void startLatencyMeasurement();
     void exportPresets();
     void importPresets();
-    juce::String latencyText() const;
+    juce::String latencyText(bool shortForm) const;
 
     GuitarFXProcessor& processor_;
     ui::LookAndFeel lnf_;
     ui::HeaderBar header_;
-    ui::EffectList effects_;
-    ui::PresetPanel presets_;
-    ui::BottomBar bottom_;
-    juce::TooltipWindow tooltips_ { this, 600 };
+    ui::StageView stage_;
+    ui::EffectGrid grid_;
+    ui::EffectPanel panel_;
+    ui::PresetBar presets_;
+    juce::TooltipWindow tooltips_ { this, 700 };
     std::unique_ptr<juce::FileChooser> chooser_;
 
     uint64_t lastBlockCount_ = 0;
