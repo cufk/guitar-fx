@@ -69,8 +69,8 @@ Ingång och utgång måste vara **samma ljudenhet** (Scarlett), annars ökar lat
 
 1. Koppla gitarren till **ingång 1** och slå på **INST** på Scarlett
    (eller se avsnittet om akustisk gitarr nedan för mikrofon + inbyggd).
-2. Starta appen → **Options → Audio/MIDI Settings**: välj Scarlett som in och ut,
-   48 kHz och buffertstorlek 64 (prova 32 när allt fungerar).
+2. Starta appen → **Options → Audio/MIDI Settings**: välj Scarlett 2i2 som både
+   Output och Input, kryssa i Output 1 + 2 och Input 1 + 2, 48 kHz och buffertstorlek 64.
 3. JUCE:s fristående app tystar ingången som standard för att undvika rundgång
    ("Audio input is muted…"). Avmarkera det i inställningarna – använd hörlurar
    eller förstärkare, inte datorns högtalare.
@@ -121,7 +121,7 @@ Mot ljudhålet blir det mycket bas. Distortion och kabinett ska vara **av** för
 2. Koppla en kabel från Scarletts **Line Out Left** (baksidan) till **ingång 1**.
 3. Klicka **Mät latens** och sedan **Starta**. Appen skickar 5 klick på −12 dBFS och
    visar rundturslatensen (DAC + ADC + drivrutin + buffertar) i ms och samples.
-   **Uppmätt (Mac + Scarlett 2i2, 48 kHz): 5,60 ms rundtur (269 samples).**
+   **Uppmätt (Mac + Scarlett 2i2, 48 kHz, buffert 64): 5,60 ms rundtur (269 samples).**
    Mycket bra för live – motsvarar att stå knappt 2 m från en förstärkare.
 4. Prova olika buffertstorlekar (Options → Audio/MIDI Settings) och anteckna resultaten.
    Effektlatensen (oversampling, för närvarande 28 samples) kommer ovanpå när
@@ -151,7 +151,7 @@ referens när effekterna utvecklas.
 ## Färdplan
 
 1. ✅ Skelett, passthrough, limiter, tester
-2. ✅ Mät latens rundtur på Mac + Scarlett 2i2: 5,60 ms vid 48 kHz
+2. ✅ Mät latens rundtur på Mac + Scarlett 2i2: 5,60 ms vid 48 kHz, buffert 64
 3. ✅ Distortion (waveshaper + 4x oversampling) och kabinett-IR (faltning)
    - Kvar: lyssningstest med riktiga DI-tagningar och finjustering av klangen
 4. ✅ Akustisk ingång: mikrofon / inbyggd / blanda med auto-justering
