@@ -102,7 +102,7 @@ GuitarFXEditor::GuitarFXEditor(GuitarFXProcessor& p)
             juce::MessageBoxOptions()
                 .withIconType(juce::MessageBoxIconType::WarningIcon)
                 .withTitle(juce::String::fromUTF8("Mät latens"))
-                .withMessage(juce::String::fromUTF8("Koppla en kabel från utgång 1 till ingång 1 (ingång 2 om källan är Ingång 2).\n"
+                .withMessage(juce::String::fromUTF8("Koppla en kabel från Line Out Left (baksidan) till ingång 1 (ingång 2 om källan är Ingång 2).\n"
                              "INST av, 48V av, gain lågt, Direct Monitor av.\n"
                              "Koppla bort förstärkare/högtalare – mätningen skickar ut klick på -12 dBFS.\n"
                              "Mätningen tar ca 4 sekunder."))

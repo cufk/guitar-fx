@@ -63,6 +63,10 @@ Appen hamnar i `build/app/GuitarFX_artefacts/<Config>/Standalone/GuitarFX.app`.
 
 ### Första körningen med Scarlett
 
+Utgångarna på baksidan heter **Left** och **Right** (= utgång 1 och 2). GuitarFX skickar
+samma signal på båda; använd **Left** till mixer/PA. Hörlurar i Scarlettens hörlursuttag.
+Ingång och utgång måste vara **samma ljudenhet** (Scarlett), annars ökar latensen kraftigt.
+
 1. Koppla gitarren till **ingång 1** och slå på **INST** på Scarlett
    (eller se avsnittet om akustisk gitarr nedan för mikrofon + inbyggd).
 2. Starta appen → **Options → Audio/MIDI Settings**: välj Scarlett som in och ut,
@@ -114,9 +118,11 @@ Mot ljudhålet blir det mycket bas. Distortion och kabinett ska vara **av** för
 ## Mäta latens (färdplanens steg 2)
 
 1. Koppla bort förstärkare/hörlurar. Slå **av** INST på ingången och vrid ner gain.
-2. Koppla en kabel från Scarletts **utgång 1** (eller Line Out L) till **ingång 1**.
+2. Koppla en kabel från Scarletts **Line Out Left** (baksidan) till **ingång 1**.
 3. Klicka **Mät latens** och sedan **Starta**. Appen skickar 5 klick på −12 dBFS och
    visar rundturslatensen (DAC + ADC + drivrutin + buffertar) i ms och samples.
+   **Uppmätt (Mac + Scarlett 2i2, 48 kHz): 5,60 ms rundtur (269 samples).**
+   Mycket bra för live – motsvarar att stå knappt 2 m från en förstärkare.
 4. Prova olika buffertstorlekar (Options → Audio/MIDI Settings) och anteckna resultaten.
    Effektlatensen (oversampling, för närvarande 28 samples) kommer ovanpå när
    distortion är på och visas i statusraden.
@@ -124,7 +130,7 @@ Mot ljudhålet blir det mycket bas. Distortion och kabinett ska vara **av** för
 "Ingen signal" betyder att klicket inte kom tillbaka (kabel, fel ingång, för låg gain).
 Stäng av Scarletts **Direct Monitor** (och Air) före mätningen. Med loopback-kabeln
 skulle Direct Monitor annars skicka ingången rakt tillbaka till utgången – en
-återkopplingsslinga som kan tjuta. Monitor-ratten styr nivån på Line Out 1/2;
+återkopplingsslinga som kan tjuta. Monitor-ratten styr nivån på Line Out Left/Right;
 ställ den på ungefär halvvägs.
 
 ## Offline-verktyget
@@ -145,7 +151,7 @@ referens när effekterna utvecklas.
 ## Färdplan
 
 1. ✅ Skelett, passthrough, limiter, tester
-2. 🟡 Mät latens rundtur på Mac + Scarlett – verktyget finns i appen, mätningen återstår
+2. ✅ Mät latens rundtur på Mac + Scarlett 2i2: 5,60 ms vid 48 kHz
 3. ✅ Distortion (waveshaper + 4x oversampling) och kabinett-IR (faltning)
    - Kvar: lyssningstest med riktiga DI-tagningar och finjustering av klangen
 4. ✅ Akustisk ingång: mikrofon / inbyggd / blanda med auto-justering
