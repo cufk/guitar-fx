@@ -103,13 +103,7 @@ private:
     static constexpr int kSubBlock = 32;
     static constexpr float kBias = 0.4f;
 
-    // Rationell tanh-approximation, exakt ±1 och derivata 0 vid |x| = 3.
-    static float softClip(float x) noexcept {
-        if (!(x > -3.0f)) return -1.0f;          // fångar även NaN -> -1 (ändligt)
-        if (x > 3.0f) return 1.0f;
-        const float x2 = x * x;
-        return std::clamp(x * (27.0f + x2) / (27.0f + 9.0f * x2), -1.0f, 1.0f);
-    }
+    static float softClip(float x) noexcept { return gfx::softClip(x); }
     static float cubicClip(float x) noexcept {
         if (!(x > -1.0f)) return -1.0f;
         if (x > 1.0f) return 1.0f;

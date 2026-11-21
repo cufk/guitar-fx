@@ -65,6 +65,18 @@ private:
     juce::Label irName_;
     ParamKnob cabLevel_;
 
+    // Generisk effektpanel: på/av-knapp + rattar (chorus, flanger, reverb).
+    struct FxPanel {
+        juce::TextButton onButton;
+        std::vector<std::unique_ptr<ParamKnob>> knobs;
+        juce::Rectangle<int> bounds;
+        int slot = -1;
+        int knobsPerRow = 4;
+    };
+    FxPanel& addFxPanel(const juce::String& title, int slot, int knobsPerRow);
+    void layoutFxPanel(FxPanel& p);
+    std::vector<std::unique_ptr<FxPanel>> fxPanels_;
+
     std::unique_ptr<juce::FileChooser> chooser_;
     juce::String irError_;
 

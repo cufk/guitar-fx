@@ -135,9 +135,36 @@ GuitarFXEditor::GuitarFXEditor(GuitarFXProcessor& p)
     irName_.setColour(juce::Label::textColourId, kDim);
     addAndMakeVisible(irName_);
 
+    // Andra raden: modulation och rum.
+    {
+        auto& c = addFxPanel("CHORUS", processor_.chorusSlot(), 3);
+        auto& ch = processor_.chorus();
+        c.knobs.push_back(std::make_unique<ParamKnob>("Hastighet", ch.rateHz, 0.01, " Hz", 0.8));
+        c.knobs.push_back(std::make_unique<ParamKnob>("Djup", ch.depth, 0.01, "", 0.5));
+        c.knobs.push_back(std::make_unique<ParamKnob>("Mix", ch.mix, 0.01, "", 0.4));
+
+        auto& f = addFxPanel("FLANGER", processor_.flangerSlot(), 4);
+        auto& fl = processor_.flanger();
+        f.knobs.push_back(std::make_unique<ParamKnob>("Hastighet", fl.rateHz, 0.01, " Hz", 0.25));
+        f.knobs.push_back(std::make_unique<ParamKnob>("Djup", fl.depth, 0.01, "", 0.7));
+        f.knobs.push_back(std::make_unique<ParamKnob>(juce::String::fromUTF8("Återkoppl."), fl.feedback, 0.01, "", 0.5));
+        f.knobs.push_back(std::make_unique<ParamKnob>("Mix", fl.mix, 0.01, "", 0.5));
+
+        auto& r = addFxPanel("REVERB", processor_.reverbSlot(), 3);
+        auto& rv = processor_.reverb();
+        r.knobs.push_back(std::make_unique<ParamKnob>("Efterklang", rv.decaySec, 0.01, " s", 2.0));
+        r.knobs.push_back(std::make_unique<ParamKnob>("Storlek", rv.size, 0.01, "", 0.6));
+        r.knobs.push_back(std::make_unique<ParamKnob>("Predelay", rv.predelayMs, 0.1, " ms", 15.0));
+        r.knobs.push_back(std::make_unique<ParamKnob>(juce::String::fromUTF8("Dämpning"), rv.dampHz, 1.0, " Hz", 6000.0));
+        r.knobs.push_back(std::make_unique<ParamKnob>(juce::String::fromUTF8("Lågskärning"), rv.lowCutHz, 1.0, " Hz", 150.0));
+        r.knobs.push_back(std::make_unique<ParamKnob>("Mix", rv.mix, 0.01, "", 0.25));
+        for (auto& panel : fxPanels_)
+            for (auto& k : panel->knobs) addAndMakeVisible(*k);
+    }
+
     setResizable(true, true);
-    setResizeLimits(1000, 520, 2400, 1600);
-    setSize(1240, 600);
+    setResizeLimits(1000, 720, 2400, 1800);
+    setSize(1240, 860);
     startTimerHz(30);
 }
 
@@ -154,6 +181,35 @@ void GuitarFXEditor::setupToggle(juce::TextButton& b, int slot) {
     b.setColour(juce::TextButton::textColourOnId, juce::Colours::white);
     b.onClick = [this, &b, slot] { processor_.engine().chain().setEnabled(slot, b.getToggleState()); };
     addAndMakeVisible(b);
+}
+
+GuitarFXEditor::FxPanel& GuitarFXEditor::addFxPanel(const juce::String& title, int slot, int knobsPerRow) {
+    auto p = std::make_unique<FxPanel>();
+    p->slot = slot;
+    p->knobsPerRow = knobsPerRow;
+    p->onButton.setButtonText(title);
+    setupToggle(p->onButton, slot);
+    fxPanels_.push_back(std::move(p));
+    return *fxPanels_.back();
+}
+
+void GuitarFXEditor::layoutFxPanel(FxPanel& p) {
+    auto r = p.bounds.reduced(10);
+    p.onButton.setBounds(r.removeFromTop(52).reduced(0, 2));
+    r.removeFromTop(8);
+    const int n = static_cast<int>(p.knobs.size());
+    const int perRow = juce::jmax(1, p.knobsPerRow);
+    const int rows = (n + perRow - 1) / perRow;
+    const int kw = r.getWidth() / perRow;
+    const int kh = juce::jmin(r.getHeight() / juce::jmax(1, rows), kw + 40);
+    auto grid = r.withSizeKeepingCentre(r.getWidth(), kh * rows);
+    for (int row = 0; row < rows; ++row) {
+        auto line = grid.removeFromTop(kh);
+        const int inRow = juce::jmin(perRow, n - row * perRow);
+        line = line.withSizeKeepingCentre(kw * inRow, kh);
+        for (int c = 0; c < inRow; ++c)
+            p.knobs[static_cast<size_t>(row * perRow + c)]->setBounds(line.removeFromLeft(kw));
+    }
 }
 
 void GuitarFXEditor::chooseImpulseResponse() {
@@ -234,6 +290,10 @@ void GuitarFXEditor::timerCallback() {
     updateAlignStatus();
     distOn_.setToggleState(e.chain().isEnabled(processor_.distortionSlot()), juce::dontSendNotification);
     cabOn_.setToggleState(e.chain().isEnabled(processor_.cabinetSlot()), juce::dontSendNotification);
+    for (auto& p : fxPanels_) {
+        p->onButton.setToggleState(e.chain().isEnabled(p->slot), juce::dontSendNotification);
+        for (auto& k : p->knobs) k->syncFromParameter();
+    }
     if (!distMode_.isPopupActive())
         distMode_.setSelectedId(static_cast<int>(processor_.distortion().mode.get()) + 1, juce::dontSendNotification);
 
@@ -267,10 +327,11 @@ void GuitarFXEditor::drawMeter(juce::Graphics& g, juce::Rectangle<int> r, const 
 void GuitarFXEditor::paint(juce::Graphics& g) {
     g.fillAll(kBg);
 
-    for (auto* panel : { &inputPanel_, &levelPanel_, &distPanel_, &cabPanel_ }) {
-        g.setColour(kPanel);
+    g.setColour(kPanel);
+    for (auto* panel : { &inputPanel_, &levelPanel_, &distPanel_, &cabPanel_ })
         g.fillRoundedRectangle(panel->toFloat(), 10.0f);
-    }
+    for (auto& p : fxPanels_)
+        g.fillRoundedRectangle(p->bounds.toFloat(), 10.0f);
     g.setColour(kDim);
     g.setFont(juce::FontOptions(14.0f, juce::Font::bold));
     g.drawText(juce::String::fromUTF8("INGÅNG"), inputPanel_.withHeight(32), juce::Justification::centred);
@@ -330,6 +391,21 @@ void GuitarFXEditor::resized() {
     area.removeFromRight(12);
 
     const int gap = 12;
+    // Andra raden (chorus, flanger, reverb) får 45 % av höjden; bredd efter antal rattar per rad.
+    {
+        auto row2 = area.removeFromBottom(area.getHeight() * 45 / 100);
+        area.removeFromBottom(gap);
+        int weightSum = 0;
+        for (auto& p : fxPanels_) weightSum += p->knobsPerRow;
+        const int total = row2.getWidth() - gap * (static_cast<int>(fxPanels_.size()) - 1);
+        for (size_t i = 0; i < fxPanels_.size(); ++i) {
+            auto& p = *fxPanels_[i];
+            const bool last = i + 1 == fxPanels_.size();
+            p.bounds = last ? row2 : row2.removeFromLeft(total * p.knobsPerRow / weightSum);
+            if (!last) row2.removeFromLeft(gap);
+            layoutFxPanel(p);
+        }
+    }
     inputPanel_ = area.removeFromLeft(juce::jmax(250, area.getWidth() * 26 / 100));
     area.removeFromLeft(gap);
     const int levelW = juce::jmax(110, area.getWidth() / 7);
