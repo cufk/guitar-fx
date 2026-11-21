@@ -4,7 +4,7 @@ Egen gitarreffektprocessor: chorus, flanger, reverb och distortion. Utvecklas p�
 med Focusrite Scarlett och är byggd för att flyttas till iPad (live) och eventuellt
 Raspberry Pi eller egen pedal.
 
-## Status (v0.5 – presets, nytt GUI, EQ)
+## Status (v0.6 – sustain, widener, nytt monokromt GUI)
 
 - Portabel DSP-kärna och ljudmotor utan beroenden (`dsp/`, `engine/`)
 - **Ingångssteg för akustisk gitarr:** Ingång 1, Ingång 2 eller **Blanda 1 + 2**
@@ -18,9 +18,14 @@ Raspberry Pi eller egen pedal.
   tryck igen för att gå tillbaka till grundljudet. Styrs med knapparna, tangenter eller
   MIDI-fotswitch (även Bluetooth). Reverbsvansen klingar ut naturligt vid byte.
 - **EQ:** lågskärning, bas, mitt (valbar frekvens), diskant och smal notch mot rundgång.
-- **GUI i samma formspråk som StemSplitter:** ljusa kort, färgade effektrader, smala
-  reglage, presets som stora knappar och ett fält längst ned med mätare och preset-växling.
-  Mörkt läge följer systemet.
+- **Sustain:** kompressor för längre ton – sustain, anslag, släpp, nivå och mix
+  (parallellkompression som behåller anslaget). Visar hur mycket den komprimerar.
+- **Widener:** bredare stereo med mitt/sida-teknik – exakt monokompatibel (L+R = originalet).
+- **Utgång Stereo / Mono (summa):** mono om bara en kanal går till mixern.
+- **Monokromt GUI med runda rattar:** varm off-white (eller mörkt), stora rubriker,
+  ring av streck som visar utnivån runt aktivt presetnummer, effekterna som rutor och
+  presets som piller. Eget appfönster utan JUCE:s "Options"-rad. Utseende: följ
+  systemet, ljust eller mörkt (⋯ → Utseende). Typsnitt: Inter (inbäddat, OFL-licens).
 - **Chorus** (hastighet, djup, mix) och **Flanger** (hastighet, djup, återkoppling, mix),
   båda i stereo: vänster och höger sveper i olika fas.
 - **Reverb** (FDN med 8 linjer): efterklang 0,3–10 s, storlek, predelay, dämpning,
@@ -44,10 +49,12 @@ Raspberry Pi eller egen pedal.
 ```
 dsp/            Ren C++20. Effect-interface, buffrar, parametrar, effekter.
   core/         Biquad, DelayLine/Lfo, Oversampler4x, FFT, Convolver, Parameter, DspUtils
-  effects/      Gain, SafetyLimiter, Eq, Distortion, Cabinet, Chorus, Flanger, Reverb
+  effects/      Gain, SafetyLimiter, Eq, Sustain, Distortion, Cabinet, Chorus, Flanger,
+                Widener, Reverb
 engine/         InputMixer, effektkedja, Engine (ingång → in-gain → kedja → ut-gain →
                 limiter), LatencyProbe, Rig (grundljud + presets).
-app/Source/ui/  Tema (StemSplitter-formspråket) och GUI-komponenter.
+app/Source/ui/  Tema (monokromt, Inter), ikoner och GUI-komponenter.
+app/Resources/  Typsnitt (Inter, SIL Open Font License).
 app/            JUCE-skal (Standalone/plugin) + GUI. Endast limkod.
 tools/          gfx-render: kör motorn på WAV-filer.
 tests/          Beroendefria tester.
@@ -83,11 +90,9 @@ Ingång och utgång måste vara **samma ljudenhet** (Scarlett), annars ökar lat
 
 1. Koppla gitarren till **ingång 1** och slå på **INST** på Scarlett
    (eller se avsnittet om akustisk gitarr nedan för mikrofon + inbyggd).
-2. Starta appen → **Options → Audio/MIDI Settings**: välj Scarlett 2i2 som både
-   Output och Input, kryssa i Output 1 + 2 och Input 1 + 2, 48 kHz och buffertstorlek 64.
-3. JUCE:s fristående app tystar ingången som standard för att undvika rundgång
-   ("Audio input is muted…"). Avmarkera det i inställningarna – använd hörlurar
-   eller förstärkare, inte datorns högtalare.
+2. Starta appen → **⋯ → Ljudinställningar…**: välj Scarlett 2i2 som både utgång och
+   ingång, kryssa i kanal 1 + 2 för båda, 48 kHz och buffertstorlek 64.
+3. Använd hörlurar eller förstärkare, inte datorns högtalare (rundgång).
 4. Ställ in gain på Scarlett så att IN-mätaren ligger kring gul vid hårt anslag.
 
 ## iOS (senare)
@@ -147,20 +152,28 @@ för stereo i PA:t.
 
 ## Grundljud och presets
 
-**Grundljudet** är det som hörs när inget preset är aktivt. Ställ in EQ och de effekter som
-alltid ska vara på (t.ex. ett diskret rum) med presetknappen **Grundljud** vald.
+**Grundljudet** är det som hörs när inget preset är aktivt. Välj pillret **0 Grundljud**
+längst ned och ställ in EQ och de effekter som alltid ska vara på (t.ex. ett diskret rum).
+
+**Gränssnittet:**
+- Rutorna uppe till höger är effekterna (fylld prick = på). Tryck på en för att visa dess
+  rattar nedanför. Dra en ratt uppåt/nedåt; dubbelklick återställer standardvärdet.
+- Reglaget till höger om effektens namn slår på/av den.
+- Vänster spalt visar aktivt preset (stort nummer och namn), utnivån som en ring av streck
+  och ← / → för att bläddra.
+- **Ingång 1** uppe till höger öppnar ingång, utgång och nivåer.
 
 **Ett preset** är en eller flera effekter med egna inställningar:
-1. Tryck **+** i Presets och ge presetet ett namn.
-2. På varje effekt som ska ingå: tryck **I PRESET**. Effekten slås på och dina ändringar
-   sparas nu i presetet (raden visar "I presetet …" i orange).
-3. Effekter utan I PRESET följer grundljudet. Ändrar du dem medan presetet är aktivt
+1. Tryck **+** längst ned till höger och ge presetet ett namn.
+2. Välj en effekt och tryck **I preset**. Effekten slås på och dina ändringar sparas nu i
+   presetet (rutan visar PRESET).
+3. Effekter utan I preset följer grundljudet. Ändrar du dem medan presetet är aktivt
    ändras grundljudet.
 
-**Live:** tryck på ett preset för att aktivera det, tryck igen (eller på Grundljud) för att
-gå tillbaka. Byten glider mjukt och reverbsvansen klingar ut. Högerklick/långt tryck på ett
-preset ger meny för att byta namn, duplicera, flytta och ta bort. Allt sparas automatiskt;
-**⋯ → Exportera/Importera presets** sparar en JSON-fil (backup, flytta till iPad).
+**Live:** tryck på ett presetpiller för att aktivera det, tryck igen (eller på Grundljud)
+för att gå tillbaka. Byten glider mjukt och reverbsvansen klingar ut. Högerklick/långt
+tryck på ett piller ger meny för att byta namn, duplicera, flytta och ta bort. Allt sparas
+automatiskt; **⋯ → Exportera/Importera presets** sparar en JSON-fil (backup, flytta till iPad).
 
 Appen startar med exempel – *Stor hall*, *Chorus* och *Flanger-svep* – att ändra eller ta bort.
 
@@ -174,8 +187,8 @@ Appen startar med exempel – *Stor hall*, *Chorus* och *Flanger-svep* – att �
 | MIDI **Program Change 0–8** | Preset 1–9 |
 | MIDI **CC 102 / 103 / 104** (värde ≥ 64) | Föregående / nästa / grundljud |
 
-Bluetooth-MIDI-pedaler (t.ex. de som syns under *Options → Audio/MIDI Settings → Bluetooth
-MIDI*) kopplas in där och aktiveras under *Active MIDI inputs*. Pedaler som i stället
+MIDI-ingångar (även Bluetooth-MIDI-pedaler som parats i macOS *Ljud-MIDI-inställningar*)
+öppnas automatiskt. Ljudkort och MIDI väljs under **⋯ → Ljudinställningar…**. Pedaler som i stället
 skickar tangenttryck (sidvändare för noter) fungerar direkt med ←/→ eller Page Up/Down.
 Senast mottagna MIDI visas längst ned till höger.
 
@@ -183,7 +196,7 @@ Senast mottagna MIDI visas längst ned till höger.
 
 1. Koppla bort förstärkare/hörlurar. Slå **av** INST på ingången och vrid ner gain.
 2. Koppla en kabel från Scarletts **Line Out Left** (baksidan) till **ingång 1**.
-3. Välj **⋯ → Mät latens…** och sedan **Starta**. Appen skickar 5 klick på −12 dBFS och
+3. Välj **⋯ → Mät latens…** och sedan **Starta**. Resultatet visas i vänster spalt. Appen skickar 5 klick på −12 dBFS och
    visar rundturslatensen (DAC + ADC + drivrutin + buffertar) i ms och samples.
    **Uppmätt (Mac + Scarlett 2i2, 48 kHz, buffert 64): 5,60 ms rundtur (269 samples).**
    Mycket bra för live – motsvarar att stå knappt 2 m från en förstärkare.
@@ -223,12 +236,13 @@ referens när effekterna utvecklas.
    - Kvar: lyssningstest med riktiga DI-tagningar och finjustering av klangen
 4. ✅ Akustisk ingång: mikrofon / inbyggd / blanda med auto-justering
 5. ✅ Chorus, flanger och reverb (FDN)
-6. ✅ EQ med notch, grundljud + presets, MIDI/tangenter, GUI i StemSplitter-stil
-7. Kompressor och delay
-8. Kroppssimulering för inbyggd mikrofon (IR via befintlig faltning)
-9. MIDI learn (valfria meddelanden per preset), scenläge med extra stora knappar
-10. iOS-bygge och live-härdning (ljudsessionsavbrott, återanslutning av ljudkort)
-11. (Valfritt) Raspberry Pi / Daisy Seed
+6. ✅ EQ med notch, grundljud + presets, MIDI/tangenter
+7. ✅ Sustain (kompressor), widener, mono-utgång, monokromt GUI med runda rattar
+8. Delay
+9. Kroppssimulering för inbyggd mikrofon (IR via befintlig faltning)
+10. MIDI learn (valfria meddelanden per preset), scenläge med extra stora knappar
+11. iOS-bygge och live-härdning (ljudsessionsavbrott, återanslutning av ljudkort)
+12. (Valfritt) Raspberry Pi / Daisy Seed
 
 ## Live-säkerhet – regler som alltid gäller
 

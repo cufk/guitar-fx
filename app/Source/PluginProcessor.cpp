@@ -4,7 +4,7 @@
 namespace {
 gfx::ParamSpec P(const char* id, const char* label, const char* unit, gfx::Parameter& p,
                  float step, int decimals, bool log = false, std::vector<std::string> choices = {}) {
-    return { id, label, unit, &p, step, decimals, log, std::move(choices) };
+    return { id, label, unit, &p, step, decimals, log, std::move(choices), p.get() };
 }
 } // namespace
 
@@ -13,14 +13,16 @@ GuitarFXProcessor::GuitarFXProcessor()
           .withInput ("Input",  juce::AudioChannelSet::stereo(), true)   // Scarlett in 1 + 2
           .withOutput("Output", juce::AudioChannelSet::stereo(), true)) {
     // Kedjan byggs en gång vid start (EffectChain::add är inte realtidssäker).
-    // Ordning: EQ -> distortion -> kabinett -> chorus -> flanger -> reverb.
+    // Ordning: EQ -> sustain -> distortion -> kabinett -> chorus -> flanger -> widener -> reverb.
     auto& chain = engine_.chain();
     auto add = [&chain](auto effect, auto*& ptr) { ptr = effect.get(); return chain.add(std::move(effect), false); };
     const int eqSlot   = add(std::make_unique<gfx::Eq>(),         eq_);
+    const int susSlot  = add(std::make_unique<gfx::Sustain>(),    sustain_);
     const int distSlot = add(std::make_unique<gfx::Distortion>(), distortion_);
     const int cabSlot  = add(std::make_unique<gfx::Cabinet>(),    cabinet_);
     const int chSlot   = add(std::make_unique<gfx::Chorus>(),     chorus_);
     const int flSlot   = add(std::make_unique<gfx::Flanger>(),    flanger_);
+    const int widSlot  = add(std::make_unique<gfx::Widener>(),    widener_);
     const int rvSlot   = add(std::make_unique<gfx::Reverb>(),     reverb_);
 
     // Färger i samma anda som StemSplitters spårfärger.
@@ -31,31 +33,42 @@ GuitarFXProcessor::GuitarFXProcessor()
         P("mid",    "Mitt",        "dB", eq_->midGainDb, 0.1f, 1),
         P("high",   "Diskant",     "dB", eq_->highGainDb, 0.1f, 1),
         P("notchHz","Notch frekv.","Hz", eq_->notchHz, 1, 0, true),
-        P("notch",  "Notch djup",  "dB", eq_->notchDepthDb, 0.5f, 1) } });
+        P("notch",  "Notch djup",  "dB", eq_->notchDepthDb, 0.5f, 1) }, {} });
+    rig_.addEffect({ "sustain", "Sustain", 0xffe0773a, susSlot, {
+        P("amount",  "Sustain", "",   sustain_->amount, 0.01f, 2),
+        P("attack",  "Anslag",  "ms", sustain_->attackMs, 0.1f, 0, true),
+        P("release", "Släpp",   "ms", sustain_->releaseMs, 1, 0, true),
+        P("level",   "Nivå",    "dB", sustain_->levelDb, 0.1f, 1),
+        P("mix",     "Mix",     "",   sustain_->mix, 0.01f, 2) },
+        [this] { return sustain_->gainReductionDb(); } });
     rig_.addEffect({ "chorus", "Chorus", 0xff8c6bf2, chSlot, {
         P("rate",  "Hastighet", "Hz", chorus_->rateHz, 0.01f, 2, true),
         P("depth", "Djup",      "",   chorus_->depth, 0.01f, 2),
-        P("mix",   "Mix",       "",   chorus_->mix, 0.01f, 2) } });
+        P("mix",   "Mix",       "",   chorus_->mix, 0.01f, 2) }, {} });
     rig_.addEffect({ "flanger", "Flanger", 0xfff5a623, flSlot, {
         P("rate",     "Hastighet",    "Hz", flanger_->rateHz, 0.01f, 2, true),
         P("depth",    "Djup",         "",   flanger_->depth, 0.01f, 2),
         P("feedback", "Återkoppling", "",   flanger_->feedback, 0.01f, 2),
-        P("mix",      "Mix",          "",   flanger_->mix, 0.01f, 2) } });
+        P("mix",      "Mix",          "",   flanger_->mix, 0.01f, 2) }, {} });
+    rig_.addEffect({ "widener", "Widener", 0xff2bb3d9, widSlot, {
+        P("width",  "Bredd",       "",   widener_->width, 0.01f, 2),
+        P("time",   "Tid",         "ms", widener_->timeMs, 0.1f, 1),
+        P("lowCut", "Bas i mitten","Hz", widener_->lowCutHz, 1, 0, true) }, {} });
     rig_.addEffect({ "reverb", "Reverb", 0xff3d8ff0, rvSlot, {
         P("decay",    "Efterklang",  "s",  reverb_->decaySec, 0.01f, 2, true),
         P("size",     "Storlek",     "",   reverb_->size, 0.01f, 2),
         P("predelay", "Predelay",    "ms", reverb_->predelayMs, 0.1f, 0),
         P("damp",     "Dämpning",    "Hz", reverb_->dampHz, 1, 0, true),
         P("lowCut",   "Lågskärning", "Hz", reverb_->lowCutHz, 1, 0, true),
-        P("mix",      "Mix",         "",   reverb_->mix, 0.01f, 2) } });
+        P("mix",      "Mix",         "",   reverb_->mix, 0.01f, 2) }, {} });
     rig_.addEffect({ "distortion", "Distortion", 0xffd9467a, distSlot, {
         P("mode",  "Typ",   "",   distortion_->mode, 1, 0, false, { "Overdrive", "Distortion", "Fuzz" }),
         P("drive", "Drive", "dB", distortion_->driveDb, 0.1f, 1),
         P("tight", "Tight", "Hz", distortion_->tightHz, 1, 0, true),
         P("tone",  "Ton",   "",   distortion_->tone, 0.01f, 2),
-        P("level", "Nivå",  "dB", distortion_->levelDb, 0.1f, 1) } });
+        P("level", "Nivå",  "dB", distortion_->levelDb, 0.1f, 1) }, {} });
     rig_.addEffect({ "cabinet", "Kabinett", 0xff9a7b5f, cabSlot, {
-        P("level", "Nivå", "dB", cabinet_->levelDb, 0.1f, 1) } });
+        P("level", "Nivå", "dB", cabinet_->levelDb, 0.1f, 1) }, {} });
 
     createFactoryPresets();
     startTimerHz(50);
@@ -261,6 +274,8 @@ void GuitarFXProcessor::getStateInformation(juce::MemoryBlock& destData) {
     state.setProperty("inputInvert2", in.invert2.load(), nullptr);
     state.setProperty("inputGainDb",  engine_.inputGain().gainDb.get(), nullptr);
     state.setProperty("outputGainDb", engine_.outputGain().gainDb.get(), nullptr);
+    state.setProperty("monoOutput",   engine_.monoOutput.load(), nullptr);
+    state.setProperty("appearance",   appearance.load(), nullptr);
     state.setProperty("cabIr",        irFile_.getFullPathName(), nullptr);
     state.setProperty("rig",          juce::JSON::toString(rigToJson(), true), nullptr);
     juce::MemoryOutputStream stream(destData, false);
@@ -280,6 +295,8 @@ void GuitarFXProcessor::setStateInformation(const void* data, int sizeInBytes) {
     in.invert2.store(static_cast<bool>(state.getProperty("inputInvert2", false)));
     engine_.inputGain().gainDb.set(f("inputGainDb", 0.0f));
     engine_.outputGain().gainDb.set(f("outputGainDb", 0.0f));
+    engine_.monoOutput.store(static_cast<bool>(state.getProperty("monoOutput", false)));
+    appearance.store(juce::jlimit(0, 2, static_cast<int>(state.getProperty("appearance", 0))));
 
     const juce::String ir = state.getProperty("cabIr", "").toString();
     if (ir.isNotEmpty() && juce::File(ir).existsAsFile()) loadImpulseResponse(juce::File(ir));

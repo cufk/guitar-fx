@@ -1,112 +1,150 @@
 #pragma once
-// GUI-komponenter i StemSplitter-stil. Allt läser och skriver motorn via
+// GUI-komponenter i det monokroma formspråket. Allt läser och skriver motorn via
 // gfx::Parameter / EffectChain / Rig (meddelandetråden) – inget ljud här.
+//
+//   HeaderBar      stor rubrik, aktivt läge, ingångsknapp och meny
+//   StageView      ring av streck (utnivå) runt aktivt presetnummer, namn, bläddring, mätare
+//   EffectGrid     de åtta effekterna som rutor (välj vilken som visas)
+//   EffectPanel    vald effekt: på/av, "I preset" och runda rattar
+//   PresetBar      presets som piller längst ned
+//   InputPanel     ingång/utgång/nivåer (popover)
 
 #include <juce_audio_processors/juce_audio_processors.h>
+#include "Icons.h"
 #include "Theme.h"
 #include "../PluginProcessor.h"
 
 namespace ui {
 
-// Rund vit knapp med symbol (CircleIconButton).
+// Rund knapp med symbol.
 class IconButton final : public juce::Button {
 public:
-    enum class Icon { Sliders, More, Plus, Prev, Next, ChevronDown, ChevronUp };
-    IconButton(Icon icon, const juce::String& tooltip);
-    void setIcon(Icon i) { icon_ = i; repaint(); }
-    void paintButton(juce::Graphics&, bool over, bool down) override;
-    bool filled = true;   // false = bara symbolen (för små knappar i rader)
-private:
-    Icon icon_;
-};
-
-// Liten av/på-knapp med text (ToggleChip).
-class Chip final : public juce::Button {
-public:
-    Chip(const juce::String& text, juce::Colour onColour);
-    void setOnColour(juce::Colour c) { onColour_ = c; repaint(); }
+    IconButton(icons::Symbol s, const juce::String& tooltip, bool filled = true);
+    void setSymbol(icons::Symbol s) { symbol_ = s; repaint(); }
     void paintButton(juce::Graphics&, bool over, bool down) override;
 private:
-    juce::Colour onColour_;
+    icons::Symbol symbol_;
+    bool filled_;
 };
 
-// Ett reglage: rubrik i versaler, värde till höger och MiniSlider under.
-// Val (choices) visas som chips i en rad.
-class ParamControl final : public juce::Component {
+// Pillerformad knapp. På = svart (inverterad), av = ruta.
+class Pill final : public juce::Button {
 public:
-    ParamControl(const gfx::ParamSpec& spec, juce::Colour tint);
+    explicit Pill(const juce::String& label, bool toggle = true);
+    void paintButton(juce::Graphics&, bool over, bool down) override;
+    juce::String prefix;            // liten text före (t.ex. presetnummer)
+    icons::Symbol symbol = icons::Symbol::More;
+    bool showSymbol = false;
+};
+
+// Av/på-reglage (monokromt).
+class Switch final : public juce::Button, private juce::Timer {
+public:
+    Switch();
+    void paintButton(juce::Graphics&, bool over, bool down) override;
+    using juce::Button::clicked;
+    void clicked() override { startTimerHz(60); }
+private:
+    void timerCallback() override;
+    float pos_ = 0.0f;
+};
+
+// En ratt i en ruta: svart rund ratt, namn nere till vänster och värde till höger.
+// Dra uppåt/nedåt eller i sidled; dubbelklick återställer standardvärdet.
+// Val (choices) visas som staplade piller i stället för ratt.
+class KnobTile final : public juce::Component {
+public:
+    explicit KnobTile(const gfx::ParamSpec& spec);
     void refresh();
     void paint(juce::Graphics&) override;
     void resized() override;
-    static constexpr int kHeight = 50;
 private:
     gfx::ParamSpec spec_;
-    juce::Slider slider_;
-    std::vector<std::unique_ptr<Chip>> choices_;
+    juce::Slider knob_;
+    std::vector<std::unique_ptr<Pill>> choices_;
 };
 
-// En effekt som rad (som ett spår i StemSplitter): färg, namn, status, PÅ / I PRESET,
-// och reglagen när raden är utfälld.
-class EffectRow final : public juce::Component {
+// De åtta effekterna som rutor. Prick = på. Svart = vald (visas i EffectPanel).
+class EffectGrid final : public juce::Component {
 public:
-    EffectRow(GuitarFXProcessor& proc, const gfx::EffectSpec& spec, std::function<void()> onLayoutChange);
-    int preferredHeight(int width) const;
+    EffectGrid(GuitarFXProcessor& proc, std::function<void(int)> onSelect);
+    void setSelected(int i) { selected_ = i; repaint(); }
+    void refresh() { repaint(); }
+    void paint(juce::Graphics&) override;
+    void mouseUp(const juce::MouseEvent&) override;
+    void mouseMove(const juce::MouseEvent&) override;
+    void mouseExit(const juce::MouseEvent&) override { hover_ = -1; repaint(); }
+private:
+    juce::Rectangle<int> cell(int i) const;
+    int cellAt(juce::Point<int>) const;
+    GuitarFXProcessor& proc_;
+    std::function<void(int)> onSelect_;
+    int selected_ = 0, hover_ = -1;
+};
+
+// Vald effekt: rubrik, status, "I preset", på/av och rattar.
+class EffectPanel final : public juce::Component {
+public:
+    explicit EffectPanel(GuitarFXProcessor& proc);
+    void show(int effectIndex);
     void refresh();
     void paint(juce::Graphics&) override;
     void resized() override;
-    void mouseUp(const juce::MouseEvent&) override;
-    void setExpanded(bool e);
-    bool isExpanded() const { return expanded_; }
 private:
-    int columns(int width) const { return width >= 560 ? 3 : 2; }
     GuitarFXProcessor& proc_;
-    const gfx::EffectSpec& spec_;
-    std::function<void()> onLayoutChange_;
-    Chip onChip_, presetChip_;
-    IconButton expand_ { IconButton::Icon::ChevronDown, juce::String::fromUTF8("Visa reglage") };
-    std::vector<std::unique_ptr<ParamControl>> params_;
-    // Kabinett: IR-val.
-    std::unique_ptr<juce::TextButton> loadIr_, builtInIr_;
+    int index_ = -1;
+    Switch switch_;
+    Pill presetPill_ { "I preset" };
+    std::unique_ptr<Pill> loadIr_, builtInIr_;
     std::unique_ptr<juce::FileChooser> chooser_;
     juce::String irStatus_;
-    bool expanded_ = false;
-    static constexpr int kHeader = 60;
+    std::vector<std::unique_ptr<KnobTile>> tiles_;
+    float activity_ = 0.0f;
 };
 
-// Rullbar lista med effektrader.
-class EffectList final : public juce::Component {
+// Vänster spalt: ringen av streck (utnivå), presetnummer, namn och bläddring.
+class StageView final : public juce::Component {
 public:
-    explicit EffectList(GuitarFXProcessor& proc);
-    void refresh() { for (auto& r : rows_) r->refresh(); }
-    void resized() override;
-private:
-    void layoutRows();
-    juce::Viewport viewport_;
-    juce::Component content_;
-    std::vector<std::unique_ptr<EffectRow>> rows_;
-};
-
-// Presets som stora knappar (fotswitch-känsla). Tryck = aktivera, igen = grundljud.
-// Högerklick / långt tryck = meny (byt namn, duplicera, flytta, ta bort).
-class PresetPanel final : public juce::Component {
-public:
-    explicit PresetPanel(GuitarFXProcessor& proc);
-    void refresh();
+    explicit StageView(GuitarFXProcessor& proc);
+    void update(float in1, float in2, float out, const juce::String& latency);
     void paint(juce::Graphics&) override;
     void resized() override;
+private:
+    GuitarFXProcessor& proc_;
+    IconButton prev_ { icons::Symbol::Prev, juce::String::fromUTF8("Föregående preset (←)") };
+    IconButton next_ { icons::Symbol::Next, juce::String::fromUTF8("Nästa preset (→)") };
+    float level_[3] {}, ring_ = 0.0f, hold_ = 0.0f;
+    int holdTicks_ = 0;
+    juce::String latency_;
+    juce::Rectangle<float> ringArea_;
+    juce::Rectangle<int> nameArea_, metersArea_, statusArea_;
+};
+
+// Presets som piller längst ned. Tryck = aktivera, igen = grundljud.
+// Högerklick / långt tryck = byt namn, duplicera, flytta, ta bort.
+class PresetBar final : public juce::Component {
+public:
+    explicit PresetBar(GuitarFXProcessor& proc);
+    void refresh();
+    void resized() override;
+    void paint(juce::Graphics&) override;
+    void mouseDown(const juce::MouseEvent&) override;
     void mouseUp(const juce::MouseEvent&) override;
 private:
-    juce::Rectangle<int> tileBounds(int tile) const;  // tile 0 = grundljud, 1.. = presets
-    int tileAt(juce::Point<int> p) const;
+    bool isMenuGesture() const;
+    void rebuild();
     void showMenu(int presetIndex);
     void rename(int presetIndex);
     GuitarFXProcessor& proc_;
-    IconButton add_ { IconButton::Icon::Plus, "Nytt preset" };
-    juce::Rectangle<int> grid_;
+    std::vector<std::unique_ptr<Pill>> pills_;   // 0 = grundljud
+    IconButton add_ { icons::Symbol::Plus, "Nytt preset" };
     uint64_t lastRevision_ = ~0ull;
+    size_t lastCount_ = ~size_t(0);
+    juce::uint32 downTime_ = 0;
+    bool popupDown_ = false;
 };
 
-// Ingång och nivåer (öppnas från sidhuvudet som popover).
+// Ingång, utgång och nivåer (popover från sidhuvudet).
 class InputPanel final : public juce::Component, private juce::Timer {
 public:
     explicit InputPanel(GuitarFXProcessor& proc);
@@ -116,39 +154,26 @@ private:
     void timerCallback() override;
     GuitarFXProcessor& proc_;
     gfx::ParamSpec balanceSpec_, alignSpec_, inSpec_, outSpec_;
-    Chip src1_, src2_, srcBlend_, inv1_, inv2_;
-    ParamControl balance_, align_, inGain_, outGain_;
-    juce::TextButton autoAlign_ { "Auto-justera" };
+    Pill src1_, src2_, srcBlend_, outStereo_, outMono_, inv1_, inv2_;
+    Pill autoAlign_ { "Auto-justera", false };
+    KnobTile balance_, align_, inGain_, outGain_;
     juce::String alignText_;
-    juce::Colour alignColour_;
+    bool alignWarning_ = false;
+    juce::Rectangle<int> alignTextArea_;
+    std::vector<std::pair<juce::String, int>> captions_;
 };
 
-// Sidhuvud: ingångsknapp, titel med undertitel och meny.
+// Sidhuvud: stor rubrik med aktivt läge, ingångspiller och meny.
 class HeaderBar final : public juce::Component {
 public:
     HeaderBar();
-    void setTexts(const juce::String& title, const juce::String& subtitle);
+    void setTexts(const juce::String& subtitle, const juce::String& sourceText);
     void paint(juce::Graphics&) override;
     void resized() override;
-    IconButton input { IconButton::Icon::Sliders, juce::String::fromUTF8("Ingång och nivåer") };
-    IconButton more  { IconButton::Icon::More, "Fler val" };
+    Pill input { juce::String::fromUTF8("Ingång 1"), false };
+    IconButton more { icons::Symbol::More, "Fler val", false };
 private:
-    juce::String title_, subtitle_;
-};
-
-// Fältet längst ned: nivåmätare, preset-växling och status.
-class BottomBar final : public juce::Component {
-public:
-    explicit BottomBar(GuitarFXProcessor& proc);
-    void update(float in1, float in2, float out);
-    void paint(juce::Graphics&) override;
-    void resized() override;
-private:
-    GuitarFXProcessor& proc_;
-    IconButton prev_ { IconButton::Icon::Prev, juce::String::fromUTF8("Föregående preset (←)") };
-    IconButton next_ { IconButton::Icon::Next, juce::String::fromUTF8("Nästa preset (→)") };
-    float in1_ = 0, in2_ = 0, out_ = 0;
-    juce::Rectangle<int> meters_, centre_, chips_;
+    juce::String subtitle_;
 };
 
 } // namespace ui

@@ -9,6 +9,8 @@
 #include "dsp/effects/Cabinet.h"
 #include "dsp/effects/Chorus.h"
 #include "dsp/effects/Eq.h"
+#include "dsp/effects/Sustain.h"
+#include "dsp/effects/Widener.h"
 #include "engine/Rig.h"
 #include "dsp/effects/Flanger.h"
 #include "dsp/effects/Reverb.h"
@@ -674,6 +676,17 @@ int main() {
         std::function<void(gfx::Effect&)> setDry;
     };
     const std::vector<FxCase> fxCases = {
+        { "Sustain",
+          [] { return std::make_unique<gfx::Sustain>(); },
+          [](gfx::Effect& e, bool hi) { auto& c = static_cast<gfx::Sustain&>(e);
+              for (auto* p : { &c.amount, &c.attackMs, &c.releaseMs, &c.levelDb }) p->set(hi ? p->max() : p->min());
+              c.mix.set(1.0f); },
+          [](gfx::Effect& e) { static_cast<gfx::Sustain&>(e).mix.set(0.0f); } },
+        { "Widener",
+          [] { return std::make_unique<gfx::Widener>(); },
+          [](gfx::Effect& e, bool hi) { auto& w = static_cast<gfx::Widener&>(e);
+              for (auto* p : { &w.width, &w.timeMs, &w.lowCutHz }) p->set(hi ? p->max() : p->min()); },
+          [](gfx::Effect& e) { static_cast<gfx::Widener&>(e).width.set(0.0f); } },
         { "EQ",
           [] { return std::make_unique<gfx::Eq>(); },
           [](gfx::Effect& e, bool hi) { auto& q = static_cast<gfx::Eq&>(e);
@@ -834,6 +847,8 @@ int main() {
         gfx::Engine e;
         std::vector<int> slots;
         slots.push_back(e.chain().add(std::make_unique<gfx::Eq>(), true));
+        slots.push_back(e.chain().add(std::make_unique<gfx::Sustain>(), true));
+        slots.push_back(e.chain().add(std::make_unique<gfx::Widener>(), true));
         slots.push_back(e.chain().add(std::make_unique<gfx::Distortion>(), false));
         slots.push_back(e.chain().add(std::make_unique<gfx::Cabinet>(), false));
         slots.push_back(e.chain().add(std::make_unique<gfx::Chorus>()));
@@ -995,6 +1010,83 @@ int main() {
         CHECK(rig.presets()[0].overrides.size() == 1);
         rig.select(0);
         CHECK(std::fabs(rvp->mix.get() - 0.3f) < 1e-6f);
+    });
+
+
+    run("Sustain: jämnar ut dynamiken och rapporterar nedreglering", [] {
+        auto outLevel = [](float amp, float amount) {
+            gfx::Sustain c;
+            c.amount.set(amount);
+            c.prepare({ kSr, kBlock, 2 });
+            Stereo s(48000);
+            sine(s.l, amp, 220.0f);
+            s.r = s.l;
+            runEffect(c, s);
+            return std::make_pair(toneAmplitude(s.l, 24000, 19200, 220.0), c.gainReductionDb());
+        };
+        const auto [loud, grLoud] = outLevel(0.8f, 0.8f);
+        const auto [quiet, grQuiet] = outLevel(0.05f, 0.8f);
+        const float inRange = gfx::gainToDb(0.8f / 0.05f);   // 24 dB
+        const float outRange = gfx::gainToDb(loud / quiet);
+        std::printf("       dynamik in %.1f dB -> ut %.1f dB, nedreglering %.1f dB\n", inRange, outRange, grLoud);
+        CHECK(outRange < inRange * 0.5f);
+        CHECK(grLoud < -10.0f);
+        CHECK(grQuiet > grLoud);
+        // Ratio/tröskel: långt över tröskeln följer kurvan 1/ratio.
+        const float g1 = gfx::Sustain::gainComputer(0.0f, -30.0f, 4.0f), g2 = gfx::Sustain::gainComputer(-10.0f, -30.0f, 4.0f);
+        CHECK(std::fabs((g1 - g2) - (-7.5f)) < 0.01f);  // 10 dB mer in => 2,5 dB mer ut
+        CHECK(gfx::Sustain::gainComputer(-80.0f, -30.0f, 4.0f) < -15.0f); // expander i pauser
+    });
+
+    run("Sustain: anslaget slipper igenom med lång attack", [] {
+        auto firstPeak = [](float attackMs) {
+            gfx::Sustain c;
+            c.amount.set(1.0f); c.attackMs.set(attackMs); c.levelDb.set(0.0f);
+            c.prepare({ kSr, kBlock, 2 });
+            Stereo s(9600);
+            sine(s.l, 0.8f, 440.0f);
+            s.r = s.l;
+            runEffect(c, s);
+            float p = 0; for (int i = 0; i < 240; ++i) p = std::max(p, std::fabs(s.l[size_t(i)]));
+            float tail = 0; for (int i = 7200; i < 9600; ++i) tail = std::max(tail, std::fabs(s.l[size_t(i)]));
+            return p / tail;   // anslag relativt stabil nivå
+        };
+        CHECK(firstPeak(60.0f) > firstPeak(1.0f) * 1.5f);
+    });
+
+    run("Widener: bredare stereo men exakt monokompatibel (L+R = original)", [] {
+        gfx::Widener w;
+        w.width.set(1.0f);
+        w.prepare({ kSr, kBlock, 2 });
+        Stereo s(48000);
+        sine(s.l, 0.4f, 330.0f);
+        for (size_t i = 0; i < s.l.size(); ++i) s.l[i] += 0.2f * std::sin(float(i) * 0.37f);
+        s.r = s.l;
+        const auto ref = s.l;
+        runEffect(w, s);
+        float monoErr = 0.0f, diff = 0.0f;
+        for (size_t i = 0; i < ref.size(); ++i) {
+            monoErr = std::max(monoErr, std::fabs(0.5f * (s.l[i] + s.r[i]) - ref[i]));
+            diff = std::max(diff, std::fabs(s.l[i] - s.r[i]));
+        }
+        CHECK(monoErr < 1.0e-5f);
+        CHECK(diff > 0.1f);
+    });
+
+    run("Motor: Mono (summa) ut ger samma signal på alla utgångar", [] {
+        gfx::Engine e;
+        auto w = std::make_unique<gfx::Widener>();
+        w->width.set(1.0f);
+        e.chain().add(std::move(w), true);
+        e.prepare({ kSr, kBlock, 2 });
+        e.monoOutput = true;
+        Stereo s(9600);
+        sine(s.l, 0.4f, 330.0f);
+        const auto ref = s.l;
+        runEngine(e, s, 9600);
+        float err = 0.0f;
+        for (size_t i = 0; i < ref.size(); ++i) err = std::max({ err, std::fabs(s.l[i] - s.r[i]), std::fabs(s.l[i] - ref[i]) });
+        CHECK(err < 1.0e-5f);
     });
 
     std::printf("\n%s (%d fel)\n", gFailures == 0 ? "ALLA TESTER OK" : "TESTER MISSLYCKADES", gFailures);
