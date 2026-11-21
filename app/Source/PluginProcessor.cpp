@@ -75,10 +75,15 @@ void GuitarFXProcessor::getStateInformation(juce::MemoryBlock& destData) {
     auto& d = *distortion_;
     auto& c = *cabinet_;
     juce::ValueTree state("GuitarFX");
-    state.setProperty("version", 2, nullptr);
+    state.setProperty("version", 3, nullptr);
     state.setProperty("inputGainDb",  engine_.inputGain().gainDb.get(), nullptr);
     state.setProperty("outputGainDb", engine_.outputGain().gainDb.get(), nullptr);
-    state.setProperty("inputChannel", engine_.inputChannel.load(), nullptr);
+    auto& in = engine_.input();
+    state.setProperty("inputMode",    in.mode.load(), nullptr);
+    state.setProperty("inputBalance", in.balance.get(), nullptr);
+    state.setProperty("inputAlignMs", in.alignMs.get(), nullptr);
+    state.setProperty("inputInvert1", in.invert1.load(), nullptr);
+    state.setProperty("inputInvert2", in.invert2.load(), nullptr);
 
     state.setProperty("distOn",    engine_.chain().isEnabled(distSlot_), nullptr);
     state.setProperty("distDrive", d.driveDb.get(), nullptr);
@@ -102,7 +107,13 @@ void GuitarFXProcessor::setStateInformation(const void* data, int sizeInBytes) {
 
     engine_.inputGain().gainDb.set(f("inputGainDb", 0.0f));
     engine_.outputGain().gainDb.set(f("outputGainDb", 0.0f));
-    engine_.inputChannel.store(static_cast<int>(state.getProperty("inputChannel", 0)));
+    auto& in = engine_.input();
+    // Äldre state (v2) hade bara "inputChannel" (0/1) – motsvarar läge Ingång 1/2.
+    in.mode.store(juce::jlimit(0, 2, static_cast<int>(state.getProperty("inputMode", state.getProperty("inputChannel", 0)))));
+    in.balance.set(f("inputBalance", 0.5f));
+    in.alignMs.set(f("inputAlignMs", 0.0f));
+    in.invert1.store(static_cast<bool>(state.getProperty("inputInvert1", false)));
+    in.invert2.store(static_cast<bool>(state.getProperty("inputInvert2", false)));
 
     auto& d = *distortion_;
     engine_.chain().setEnabled(distSlot_, static_cast<bool>(state.getProperty("distOn", false)));

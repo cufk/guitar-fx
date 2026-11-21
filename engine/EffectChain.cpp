@@ -48,6 +48,13 @@ int EffectChain::latencySamples() const {
     return total;
 }
 
+int EffectChain::activeLatencySamples() const {
+    int total = 0;
+    for (int i = 0; i < numSlots_; ++i)
+        if (isEnabled(i)) total += slots_[static_cast<size_t>(i)].effect->latencySamples();
+    return total;
+}
+
 void EffectChain::process(AudioBufferView buf) {
     for (int i = 0; i < numSlots_; ++i) {
         auto& s = slots_[static_cast<size_t>(i)];

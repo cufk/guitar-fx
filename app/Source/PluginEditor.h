@@ -1,6 +1,7 @@
 #pragma once
 // Scen-GUI, version 1: stora reglage och tydliga mätare.
-//  - In/ut-nivå (peak) med klippvarning
+//  - Ingång: mikrofon / inbyggd / blanda, polaritet, tidsjustering (auto)
+//  - In/ut-nivå (peak per ingång) med klippvarning
 //  - Distortion (läge, drive, tight, ton, nivå) och kabinett (IR, nivå) med stora på/av-knappar
 //  - Latensmätning (loopback-kabel ut -> in)
 //  - Limiterns nedreglering, CPU-last och antal automatiska återställningar (NaN-skydd)
@@ -38,14 +39,22 @@ private:
     void setupToggle(juce::TextButton& b, int slot);
     void chooseImpulseResponse();
     void updateLatencyLabel();
+    void updateAlignStatus();
 
     GuitarFXProcessor& processor_;
 
-    juce::ComboBox inputChannel_;
+    juce::ComboBox inputSource_;
     juce::TextButton latencyButton_ { juce::String::fromUTF8("Mät latens") };
     juce::Label latencyLabel_;
 
     ParamKnob inputGain_, outputGain_;
+
+    ParamKnob balance_, align_;
+    juce::TextButton invert1_ { juce::String::fromUTF8("Ø Ingång 1") }, invert2_ { juce::String::fromUTF8("Ø Ingång 2") };
+    juce::TextButton autoAlign_ { "Auto-justera" };
+    juce::Label alignStatus_;
+    juce::String alignText_;
+    juce::Colour alignColour_;
 
     juce::TextButton distOn_ { "DISTORTION" };
     juce::ComboBox distMode_;
@@ -59,9 +68,9 @@ private:
     std::unique_ptr<juce::FileChooser> chooser_;
     juce::String irError_;
 
-    juce::Rectangle<int> levelPanel_, distPanel_, cabPanel_, meterArea_, statusArea_;
+    juce::Rectangle<int> inputPanel_, levelPanel_, distPanel_, cabPanel_, meterArea_, statusArea_;
 
-    float inPeakHold_ = 0.0f, outPeakHold_ = 0.0f;
+    float inPeakHold_[2] { 0.0f, 0.0f }, outPeakHold_ = 0.0f;
     uint64_t lastBlockCount_ = 0;
     int stalledTicks_ = 0;
 
