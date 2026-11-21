@@ -7,6 +7,9 @@
 #include "dsp/core/Convolver.h"
 #include "dsp/core/Oversampler.h"
 #include "dsp/effects/Cabinet.h"
+#include "dsp/effects/Chorus.h"
+#include "dsp/effects/Flanger.h"
+#include "dsp/effects/Reverb.h"
 #include "dsp/effects/Distortion.h"
 #include <random>
 #include <thread>
@@ -657,6 +660,186 @@ int main() {
         }
         CHECK(scope.count() == 0);
         CHECK(allFiniteAndBounded(s, 1.0f));
+    });
+
+
+    // ----------------------------------------------------------------- Chorus / Flanger / Reverb
+    // Gemensamma krav för varje ny effekt: tystnad, extrema parametrar, mix 0 = genomgång, inga allokeringar.
+    struct FxCase {
+        const char* name;
+        std::function<std::unique_ptr<gfx::Effect>()> make;
+        std::function<void(gfx::Effect&, bool extreme)> setExtreme;
+        std::function<void(gfx::Effect&)> setDry;
+    };
+    const std::vector<FxCase> fxCases = {
+        { "Chorus",
+          [] { return std::make_unique<gfx::Chorus>(); },
+          [](gfx::Effect& e, bool hi) { auto& c = static_cast<gfx::Chorus&>(e);
+              c.rateHz.set(hi ? 5.0f : 0.05f); c.depth.set(hi ? 1.0f : 0.0f); c.mix.set(hi ? 1.0f : 0.0f); },
+          [](gfx::Effect& e) { static_cast<gfx::Chorus&>(e).mix.set(0.0f); } },
+        { "Flanger",
+          [] { return std::make_unique<gfx::Flanger>(); },
+          [](gfx::Effect& e, bool hi) { auto& f = static_cast<gfx::Flanger&>(e);
+              f.rateHz.set(hi ? 5.0f : 0.05f); f.depth.set(hi ? 1.0f : 0.0f);
+              f.feedback.set(hi ? 0.95f : -0.95f); f.mix.set(1.0f); },
+          [](gfx::Effect& e) { static_cast<gfx::Flanger&>(e).mix.set(0.0f); } },
+        { "Reverb",
+          [] { return std::make_unique<gfx::Reverb>(); },
+          [](gfx::Effect& e, bool hi) { auto& r = static_cast<gfx::Reverb&>(e);
+              r.decaySec.set(hi ? 10.0f : 0.3f); r.size.set(hi ? 1.0f : 0.0f); r.predelayMs.set(hi ? 120.0f : 0.0f);
+              r.dampHz.set(hi ? 16000.0f : 1500.0f); r.lowCutHz.set(hi ? 20.0f : 600.0f); r.mix.set(1.0f); },
+          [](gfx::Effect& e) { static_cast<gfx::Reverb&>(e).mix.set(0.0f); } },
+    };
+
+    for (const auto& fc : fxCases) {
+        run((std::string(fc.name) + ": tystnad in -> tystnad ut").c_str(), [&] {
+            for (bool hi : { false, true }) {
+                auto fx = fc.make();
+                fc.setExtreme(*fx, hi);
+                fx->prepare({ kSr, kBlock, 2 });
+                Stereo s(48000);
+                runEffect(*fx, s);
+                float peak = 0.0f;
+                for (size_t i = 0; i < s.l.size(); ++i) peak = std::max({ peak, std::fabs(s.l[i]), std::fabs(s.r[i]) });
+                CHECK(peak == 0.0f);
+            }
+        });
+
+        run((std::string(fc.name) + ": extrema parametrar och indata ger inga NaN och begränsad nivå").c_str(), [&] {
+            for (bool hi : { false, true }) {
+                auto fx = fc.make();
+                fc.setExtreme(*fx, hi);
+                fx->prepare({ kSr, kBlock, 2 });
+                Stereo s(96000);
+                stressInput(s);
+                runEffect(*fx, s, 61);
+                // Spikar på 1e6 passerar torrt; poängen är att inget blir NaN/Inf eller växer.
+                CHECK(allFiniteAndBounded(s, 1.0e7f));
+                // Efter stressen: tystnad ska klinga av (ingen självsvängning).
+                Stereo q(48000 * 12);
+                runEffect(*fx, q);
+                // Svansen ska avta med minst 40 dB på 12 s (10 s reverb ger 72 dB).
+                float head = 0.0f, tail = 0.0f;
+                for (size_t i = 0; i < 4800; ++i) head = std::max({ head, std::fabs(q.l[i]), std::fabs(q.r[i]) });
+                for (size_t i = q.l.size() - 4800; i < q.l.size(); ++i) tail = std::max({ tail, std::fabs(q.l[i]), std::fabs(q.r[i]) });
+                CHECK(tail < 1.0e-3f || tail < head * 0.01f);
+            }
+        });
+
+        run((std::string(fc.name) + ": mix 0 ger exakt genomgång").c_str(), [&] {
+            auto fx = fc.make();
+            fc.setDry(*fx);
+            fx->prepare({ kSr, kBlock, 2 });
+            Stereo s(9600);
+            sine(s.l, 0.5f, 330.0f);
+            s.r = s.l;
+            const auto ref = s.l;
+            runEffect(*fx, s);
+            float err = 0.0f;
+            for (size_t i = 0; i < s.l.size(); ++i) err = std::max({ err, std::fabs(s.l[i] - ref[i]), std::fabs(s.r[i] - ref[i]) });
+            CHECK(err < 1.0e-6f);
+        });
+
+        run((std::string(fc.name) + ": process() allokerar inget minne").c_str(), [&] {
+            auto fx = fc.make();
+            fx->prepare({ kSr, kBlock, 2 });
+            Stereo s(kBlock * 300);
+            sine(s.l, 0.5f, 220.0f);
+            s.r = s.l;
+            NoAllocScope scope;
+            for (int b = 0; b < 300; ++b) {
+                if (b == 100) fc.setExtreme(*fx, true);
+                if (b == 200) { fc.setExtreme(*fx, false); fx->reset(); }
+                fx->process(s.view(b * kBlock, kBlock));
+            }
+            CHECK(scope.count() == 0);
+        });
+    }
+
+    run("Chorus och flanger: vänster och höger skiljer sig (stereo)", [] {
+        for (int which = 0; which < 2; ++which) {
+            std::unique_ptr<gfx::Effect> fx;
+            if (which == 0) fx = std::make_unique<gfx::Chorus>(); else fx = std::make_unique<gfx::Flanger>();
+            fx->prepare({ kSr, kBlock, 2 });
+            Stereo s(48000);
+            sine(s.l, 0.5f, 440.0f);
+            s.r = s.l;
+            runEffect(*fx, s);
+            float diff = 0.0f;
+            for (size_t i = 24000; i < s.l.size(); ++i) diff = std::max(diff, std::fabs(s.l[i] - s.r[i]));
+            CHECK(diff > 0.05f);
+        }
+    });
+
+    run("Flanger: max återkoppling med fullskalig insignal förblir begränsad", [] {
+        gfx::Flanger f;
+        f.feedback.set(0.95f); f.mix.set(1.0f); f.depth.set(0.0f);
+        f.prepare({ kSr, kBlock, 2 });
+        Stereo s(48000 * 5);
+        sine(s.l, 1.0f, 1000.0f);
+        s.r = s.l;
+        runEffect(f, s);
+        float peak = 0.0f;
+        for (float v : s.l) peak = std::max(peak, std::fabs(v));
+        std::printf("       topp: %.2f\n", peak);
+        CHECK(peak < 25.0f); // softClip i slingan: begränsad (limitern tar resten)
+    });
+
+    run("Reverb: efterklangstiden stämmer med inställningen (RT60 2 s, ±30 %)", [] {
+        gfx::Reverb r;
+        r.decaySec.set(2.0f); r.mix.set(1.0f); r.predelayMs.set(0.0f);
+        r.dampHz.set(16000.0f); r.lowCutHz.set(20.0f);
+        r.prepare({ kSr, kBlock, 2 });
+        const int n = 48000 * 4;
+        Stereo s(n);
+        // Kort brusskur som excitation.
+        std::mt19937 rng(2);
+        std::uniform_real_distribution<float> d(-0.5f, 0.5f);
+        for (int i = 0; i < 480; ++i) s.l[size_t(i)] = s.r[size_t(i)] = d(rng);
+        runEffect(r, s);
+        // Energi i fönster om 20 ms -> dB.
+        const int win = 960;
+        std::vector<double> db;
+        for (int start = 4800; start + win <= n; start += win) {
+            double e = 0.0;
+            for (int i = start; i < start + win; ++i) e += double(s.l[size_t(i)]) * s.l[size_t(i)] + double(s.r[size_t(i)]) * s.r[size_t(i)];
+            db.push_back(10.0 * std::log10(e + 1e-30));
+        }
+        // Linjär regression på -5..-35 dB under starten.
+        const double ref = db[0];
+        double sx = 0, sy = 0, sxx = 0, sxy = 0; int cnt = 0;
+        for (size_t k = 0; k < db.size(); ++k) {
+            const double rel = db[k] - ref;
+            if (rel > -5.0 || rel < -35.0) continue;
+            const double t = double(k) * win / kSr;
+            sx += t; sy += db[k]; sxx += t * t; sxy += t * db[k]; ++cnt;
+        }
+        CHECK(cnt > 5);
+        const double slope = (cnt * sxy - sx * sy) / (cnt * sxx - sx * sx); // dB/s
+        const double rt60 = -60.0 / slope;
+        std::printf("       uppmätt RT60: %.2f s\n", rt60);
+        CHECK(rt60 > 1.4 && rt60 < 2.6);
+    });
+
+    run("Kedja: alla effekter på samtidigt, av/på, realtidssäkert", [] {
+        gfx::Engine e;
+        std::vector<int> slots;
+        slots.push_back(e.chain().add(std::make_unique<gfx::Distortion>(), false));
+        slots.push_back(e.chain().add(std::make_unique<gfx::Cabinet>(), false));
+        slots.push_back(e.chain().add(std::make_unique<gfx::Chorus>()));
+        slots.push_back(e.chain().add(std::make_unique<gfx::Flanger>()));
+        slots.push_back(e.chain().add(std::make_unique<gfx::Reverb>()));
+        e.prepare({ kSr, 256, 2 });
+        Stereo s(kBlock * 600);
+        sine(s.l, 0.4f, 196.0f);
+        NoAllocScope scope;
+        for (int b = 0; b < 600; ++b) {
+            if (b % 50 == 0) { const int sl = slots[size_t((b / 50) % slots.size())]; e.chain().setEnabled(sl, !e.chain().isEnabled(sl)); }
+            e.process(s.view(b * kBlock, kBlock));
+        }
+        CHECK(scope.count() == 0);
+        CHECK(allFiniteAndBounded(s, 1.0f));
+        CHECK(e.recoveryCount() == 0);
     });
 
     std::printf("\n%s (%d fel)\n", gFailures == 0 ? "ALLA TESTER OK" : "TESTER MISSLYCKADES", gFailures);

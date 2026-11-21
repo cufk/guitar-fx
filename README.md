@@ -4,7 +4,7 @@ Egen gitarreffektprocessor: chorus, flanger, reverb och distortion. Utvecklas p�
 med Focusrite Scarlett och är byggd för att flyttas till iPad (live) och eventuellt
 Raspberry Pi eller egen pedal.
 
-## Status (v0.3 – akustisk ingång, distortion, kabinett, latensmätning)
+## Status (v0.4 – chorus, flanger, reverb, akustisk ingång)
 
 - Portabel DSP-kärna och ljudmotor utan beroenden (`dsp/`, `engine/`)
 - **Ingångssteg för akustisk gitarr:** Ingång 1, Ingång 2 eller **Blanda 1 + 2**
@@ -13,6 +13,11 @@ Raspberry Pi eller egen pedal.
   Mono ut på alla utgångar (dual mono).
 - Säkerhetslimiter sist i kedjan (−1 dBFS tak, NaN/Inf-skydd, automatisk återställning)
 - Effektkedja med klickfri bypass (15 ms crossfade)
+- **Chorus** (hastighet, djup, mix) och **Flanger** (hastighet, djup, återkoppling, mix),
+  båda i stereo: vänster och höger sveper i olika fas.
+- **Reverb** (FDN med 8 linjer): efterklang 0,3–10 s, storlek, predelay, dämpning,
+  lågskärning på efterklangen och mix. Efterklangstiden stämmer med inställningen
+  (testat), och slingan är stabil för alla inställningar.
 - **Distortion** med 4x oversampling (halvbands-FIR, ~0,58 ms latens vid 48 kHz):
   lägena Overdrive / Distortion / Fuzz, rattar Drive, Tight (lågskärning före
   klippning), Ton och Nivå. Uppmätt aliasing < −100 dB (7 kHz-ton, 24 dB drive).
@@ -30,8 +35,8 @@ Raspberry Pi eller egen pedal.
 
 ```
 dsp/            Ren C++20. Effect-interface, buffrar, parametrar, effekter.
-  core/         Biquad, Oversampler4x, FFT, Convolver, Parameter, DspUtils
-  effects/      Gain, SafetyLimiter, Distortion, Cabinet
+  core/         Biquad, DelayLine/Lfo, Oversampler4x, FFT, Convolver, Parameter, DspUtils
+  effects/      Gain, SafetyLimiter, Distortion, Cabinet, Chorus, Flanger, Reverb
 engine/         InputMixer, effektkedja, Engine (ingång → in-gain → kedja → ut-gain →
                 limiter), LatencyProbe.
 app/            JUCE-skal (Standalone/plugin) + GUI. Endast limkod.
@@ -115,6 +120,22 @@ prova dem också om det börjar tjuta, ibland flyttar det rundgången.
 Mikrofonplacering: riktad mot där halsen möter kroppen (12:e–14:e bandet), 15–30 cm bort.
 Mot ljudhålet blir det mycket bas. Distortion och kabinett ska vara **av** för akustisk gitarr.
 
+### Effekter för akustisk gitarr – startinställningar
+
+Kedjan är: distortion → kabinett → **chorus → flanger → reverb**. Allt är av vid start.
+
+- **Reverb** – det viktigaste. Börja med efterklang 1,5–2,5 s, mix 0,2–0,3, predelay
+  10–25 ms (håller anslaget tydligt). Höj **Lågskärning** (150–250 Hz) om det blir grötigt
+  i PA:t, sänk **Dämpning** (4000–6000 Hz) för en varmare, mindre "glasig" svans.
+- **Chorus** – låg hastighet (0,3–0,8 Hz), djup 0,3–0,5, mix 0,3. Ger bredd utan att
+  gitarren låter ostämd.
+- **Flanger** – mer en specialeffekt på akustisk gitarr; låg hastighet och mix 0,3
+  för ett mjukt svep, hög återkoppling för en tydlig "jet"-effekt.
+
+Stereo: chorus, flanger och reverb ger olika signal i Left och Right. Med bara Left till
+mixern hörs effekterna fortfarande fullt ut (i mono). Koppla Right till en andra kanal
+för stereo i PA:t.
+
 ## Mäta latens (färdplanens steg 2)
 
 1. Koppla bort förstärkare/hörlurar. Slå **av** INST på ingången och vrid ner gain.
@@ -142,6 +163,9 @@ ställ den på ungefär halvvägs.
 ./build/tools/offline-render/gfx-render --sine 220 --seconds 5 test.wav
 ```
 
+Effekter: `--chorus 0.4` (mix), `--flanger 0.5` (mix), `--reverb 2` (efterklang i s,
+med `--reverb-mix 0.25`). Filen förlängs så att efterklangen hinner klinga ut.
+
 `--drive` slår på distortion (`--mode` 0 Overdrive, 1 Distortion, 2 Fuzz), `--cab` det
 inbyggda kabinettet och `--ir` laddar en egen IR.
 
@@ -155,9 +179,9 @@ referens när effekterna utvecklas.
 3. ✅ Distortion (waveshaper + 4x oversampling) och kabinett-IR (faltning)
    - Kvar: lyssningstest med riktiga DI-tagningar och finjustering av klangen
 4. ✅ Akustisk ingång: mikrofon / inbyggd / blanda med auto-justering
-5. Akustisk EQ: lågskärning, låg/mitt/diskant, notch mot rundgång
-6. Reverb (Freeverb först, sedan FDN/plate)
-7. Kompressor, sedan `ModulatedDelay` → Chorus, Flanger och delay
+5. ✅ Chorus, flanger och reverb (FDN)
+6. Akustisk EQ: lågskärning, låg/mitt/diskant, notch mot rundgång
+7. Kompressor och delay
 8. Kroppssimulering för inbyggd mikrofon (IR via befintlig faltning)
 9. Presets (JSON), MIDI-fotswitch, scenläge
 10. iOS-bygge och live-härdning (ljudsessionsavbrott, återanslutning av ljudkort)

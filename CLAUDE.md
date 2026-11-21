@@ -31,7 +31,11 @@ Driftsäkerhet live är huvudkravet. Svara på svenska.
 
 ## Nästa steg
 Se "Färdplan" i README.md. Klart: akustisk ingång (blanda + auto-justering),
-distortion, kabinett-IR, latensmätare. Nästa: akustisk EQ + notch mot rundgång,
-sedan reverb. Användaren ska mäta latens och skicka inspelningar.
-Känd förbättring: effekterna bearbetar båda kanalerna fast signalen är mono
-(dubbel CPU) – värt att åtgärda före Raspberry Pi.
+chorus, flanger, reverb (FDN), distortion, kabinett-IR, latensmätare (5,60 ms
+rundtur, buffert 64). Nästa: akustisk EQ + notch mot rundgång, sedan kompressor och delay.
+GUI: nya effekter läggs till med `addFxPanel()` i editorn och `registerParam()` /
+`slots_` i processorn (sparas automatiskt i state).
+Möjlig förbättring: reverbsvansen klipps vid bypass (15 ms fade) – "spillover" vore bättre live.
+Känd förbättring: effekter före chorus (distortion, kabinett, kommande EQ) bearbetar
+båda kanalerna fast signalen fortfarande är mono (dubbel CPU) – värt att åtgärda före
+Raspberry Pi. Chorus/flanger/reverb gör stereo och behöver båda.

@@ -46,4 +46,14 @@ private:
 
 inline bool isFiniteSample(float x) { return std::isfinite(x); }
 
+// Rationell tanh-approximation: exakt ±1 och derivata 0 vid |x| = 3, ≈ x för små x.
+// Används i waveshapers och för att begränsa återkopplingsslingor.
+inline float softClip(float x) noexcept {
+    if (!(x > -3.0f)) return -1.0f;          // fångar även NaN -> -1 (ändligt)
+    if (x > 3.0f) return 1.0f;
+    const float x2 = x * x;
+    const float y = x * (27.0f + x2) / (27.0f + 9.0f * x2);
+    return y > 1.0f ? 1.0f : (y < -1.0f ? -1.0f : y);
+}
+
 } // namespace gfx

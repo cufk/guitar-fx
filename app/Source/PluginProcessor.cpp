@@ -6,12 +6,42 @@ GuitarFXProcessor::GuitarFXProcessor()
           .withInput ("Input",  juce::AudioChannelSet::stereo(), true)   // Scarlett in 1 (+2)
           .withOutput("Output", juce::AudioChannelSet::stereo(), true)) {
     // Kedjan byggs en gång vid start (EffectChain::add är inte realtidssäker).
-    auto dist = std::make_unique<gfx::Distortion>();
-    auto cab  = std::make_unique<gfx::Cabinet>();
-    distortion_ = dist.get();
-    cabinet_    = cab.get();
-    distSlot_ = engine_.chain().add(std::move(dist), false);
-    cabSlot_  = engine_.chain().add(std::move(cab),  false);
+    // Ordning: distortion -> kabinett -> chorus -> flanger -> reverb. Allt av från start.
+    auto add = [this](auto effect, auto*& ptr, int& slot, const char* key) {
+        ptr = effect.get();
+        slot = engine_.chain().add(std::move(effect), false);
+        slots_.push_back({ key, slot });
+    };
+    add(std::make_unique<gfx::Distortion>(), distortion_, distSlot_,    "distOn");
+    add(std::make_unique<gfx::Cabinet>(),    cabinet_,    cabSlot_,     "cabOn");
+    add(std::make_unique<gfx::Chorus>(),     chorus_,     chorusSlot_,  "chorusOn");
+    add(std::make_unique<gfx::Flanger>(),    flanger_,    flangerSlot_, "flangerOn");
+    add(std::make_unique<gfx::Reverb>(),     reverb_,     reverbSlot_,  "reverbOn");
+
+    auto& in = engine_.input();
+    registerParam("inputGainDb",  engine_.inputGain().gainDb);
+    registerParam("outputGainDb", engine_.outputGain().gainDb);
+    registerParam("inputBalance", in.balance);
+    registerParam("inputAlignMs", in.alignMs);
+    registerParam("distDrive",    distortion_->driveDb);
+    registerParam("distTone",     distortion_->tone);
+    registerParam("distLevel",    distortion_->levelDb);
+    registerParam("distMode",     distortion_->mode);
+    registerParam("distTight",    distortion_->tightHz);
+    registerParam("cabLevel",     cabinet_->levelDb);
+    registerParam("chorusRate",   chorus_->rateHz);
+    registerParam("chorusDepth",  chorus_->depth);
+    registerParam("chorusMix",    chorus_->mix);
+    registerParam("flangerRate",  flanger_->rateHz);
+    registerParam("flangerDepth", flanger_->depth);
+    registerParam("flangerFeedback", flanger_->feedback);
+    registerParam("flangerMix",   flanger_->mix);
+    registerParam("reverbDecay",  reverb_->decaySec);
+    registerParam("reverbSize",   reverb_->size);
+    registerParam("reverbPredelay", reverb_->predelayMs);
+    registerParam("reverbDamp",   reverb_->dampHz);
+    registerParam("reverbLowCut", reverb_->lowCutHz);
+    registerParam("reverbMix",    reverb_->mix);
 }
 
 bool GuitarFXProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const {
@@ -70,31 +100,19 @@ void GuitarFXProcessor::useBuiltInImpulseResponse() {
     irFile_ = juce::File();
 }
 
-// Enkel state: nivåer, effekter och IR-fil. Ersätts av preset-systemet (JSON) senare.
+// State: alla registrerade parametrar, effekternas på/av, ingångsval och IR-fil.
+// Ersätts av preset-systemet (JSON) senare.
 void GuitarFXProcessor::getStateInformation(juce::MemoryBlock& destData) {
-    auto& d = *distortion_;
-    auto& c = *cabinet_;
     juce::ValueTree state("GuitarFX");
-    state.setProperty("version", 3, nullptr);
-    state.setProperty("inputGainDb",  engine_.inputGain().gainDb.get(), nullptr);
-    state.setProperty("outputGainDb", engine_.outputGain().gainDb.get(), nullptr);
+    state.setProperty("version", 4, nullptr);
+    for (const auto& e : params_) state.setProperty(e.key, e.param->get(), nullptr);
+    for (const auto& e : slots_)  state.setProperty(e.key, engine_.chain().isEnabled(e.slot), nullptr);
+
     auto& in = engine_.input();
     state.setProperty("inputMode",    in.mode.load(), nullptr);
-    state.setProperty("inputBalance", in.balance.get(), nullptr);
-    state.setProperty("inputAlignMs", in.alignMs.get(), nullptr);
     state.setProperty("inputInvert1", in.invert1.load(), nullptr);
     state.setProperty("inputInvert2", in.invert2.load(), nullptr);
-
-    state.setProperty("distOn",    engine_.chain().isEnabled(distSlot_), nullptr);
-    state.setProperty("distDrive", d.driveDb.get(), nullptr);
-    state.setProperty("distTone",  d.tone.get(), nullptr);
-    state.setProperty("distLevel", d.levelDb.get(), nullptr);
-    state.setProperty("distMode",  d.mode.get(), nullptr);
-    state.setProperty("distTight", d.tightHz.get(), nullptr);
-
-    state.setProperty("cabOn",    engine_.chain().isEnabled(cabSlot_), nullptr);
-    state.setProperty("cabLevel", c.levelDb.get(), nullptr);
-    state.setProperty("cabIr",    irFile_.getFullPathName(), nullptr);
+    state.setProperty("cabIr",        irFile_.getFullPathName(), nullptr);
 
     juce::MemoryOutputStream stream(destData, false);
     state.writeToStream(stream);
@@ -103,28 +121,19 @@ void GuitarFXProcessor::getStateInformation(juce::MemoryBlock& destData) {
 void GuitarFXProcessor::setStateInformation(const void* data, int sizeInBytes) {
     const auto state = juce::ValueTree::readFromData(data, static_cast<size_t>(sizeInBytes));
     if (!state.isValid()) return;
-    auto f = [&](const char* key, float def) { return static_cast<float>(state.getProperty(key, def)); };
 
-    engine_.inputGain().gainDb.set(f("inputGainDb", 0.0f));
-    engine_.outputGain().gainDb.set(f("outputGainDb", 0.0f));
+    // Saknade nycklar (äldre state) får standardvärdet.
+    for (const auto& e : params_)
+        e.param->set(static_cast<float>(state.getProperty(e.key, e.defaultValue)));
+    for (const auto& e : slots_)
+        engine_.chain().setEnabled(e.slot, static_cast<bool>(state.getProperty(e.key, false)));
+
     auto& in = engine_.input();
     // Äldre state (v2) hade bara "inputChannel" (0/1) – motsvarar läge Ingång 1/2.
     in.mode.store(juce::jlimit(0, 2, static_cast<int>(state.getProperty("inputMode", state.getProperty("inputChannel", 0)))));
-    in.balance.set(f("inputBalance", 0.5f));
-    in.alignMs.set(f("inputAlignMs", 0.0f));
     in.invert1.store(static_cast<bool>(state.getProperty("inputInvert1", false)));
     in.invert2.store(static_cast<bool>(state.getProperty("inputInvert2", false)));
 
-    auto& d = *distortion_;
-    engine_.chain().setEnabled(distSlot_, static_cast<bool>(state.getProperty("distOn", false)));
-    d.driveDb.set(f("distDrive", 18.0f));
-    d.tone.set(f("distTone", 0.5f));
-    d.levelDb.set(f("distLevel", -6.0f));
-    d.mode.set(f("distMode", 0.0f));
-    d.tightHz.set(f("distTight", 120.0f));
-
-    engine_.chain().setEnabled(cabSlot_, static_cast<bool>(state.getProperty("cabOn", false)));
-    cabinet_->levelDb.set(f("cabLevel", 0.0f));
     const juce::String ir = state.getProperty("cabIr", "").toString();
     if (ir.isNotEmpty() && juce::File(ir).existsAsFile()) loadImpulseResponse(juce::File(ir));
     else useBuiltInImpulseResponse();

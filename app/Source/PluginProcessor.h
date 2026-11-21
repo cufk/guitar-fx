@@ -6,6 +6,9 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "engine/Engine.h"
 #include "dsp/effects/Cabinet.h"
+#include "dsp/effects/Chorus.h"
+#include "dsp/effects/Flanger.h"
+#include "dsp/effects/Reverb.h"
 #include "dsp/effects/Distortion.h"
 
 class GuitarFXProcessor final : public juce::AudioProcessor {
@@ -24,7 +27,7 @@ public:
     const juce::String getName() const override { return "GuitarFX"; }
     bool acceptsMidi() const override  { return true; }
     bool producesMidi() const override { return false; }
-    double getTailLengthSeconds() const override { return 0.5; } // kabinett-IR
+    double getTailLengthSeconds() const override { return 10.0; } // reverb (max efterklang)
 
     int getNumPrograms() override { return 1; }
     int getCurrentProgram() override { return 0; }
@@ -41,8 +44,14 @@ public:
     // Effekterna i kedjan (ägs av engine_.chain()).
     gfx::Distortion& distortion() { return *distortion_; }
     gfx::Cabinet& cabinet() { return *cabinet_; }
+    gfx::Chorus& chorus() { return *chorus_; }
+    gfx::Flanger& flanger() { return *flanger_; }
+    gfx::Reverb& reverb() { return *reverb_; }
     int distortionSlot() const { return distSlot_; }
     int cabinetSlot() const { return cabSlot_; }
+    int chorusSlot() const { return chorusSlot_; }
+    int flangerSlot() const { return flangerSlot_; }
+    int reverbSlot() const { return reverbSlot_; }
 
     // Läs in en IR-fil (WAV/AIFF) till kabinettet. Meddelandetråden.
     // Returnerar ett felmeddelande, eller tom sträng vid lyckad laddning.
@@ -54,7 +63,18 @@ private:
     gfx::Engine engine_;
     gfx::Distortion* distortion_ = nullptr;
     gfx::Cabinet* cabinet_ = nullptr;
-    int distSlot_ = -1, cabSlot_ = -1;
+    gfx::Chorus* chorus_ = nullptr;
+    gfx::Flanger* flanger_ = nullptr;
+    gfx::Reverb* reverb_ = nullptr;
+    int distSlot_ = -1, cabSlot_ = -1, chorusSlot_ = -1, flangerSlot_ = -1, reverbSlot_ = -1;
+
+    // Register för att spara/läsa state: nyckel -> parameter (med standardvärde),
+    // och nyckel -> effektplats (på/av). Nya effekter läggs bara till här.
+    struct ParamEntry { const char* key; gfx::Parameter* param; float defaultValue; };
+    struct SlotEntry  { const char* key; int slot; };
+    std::vector<ParamEntry> params_;
+    std::vector<SlotEntry> slots_;
+    void registerParam(const char* key, gfx::Parameter& p) { params_.push_back({ key, &p, p.get() }); }
     juce::File irFile_;
     juce::AudioProcessLoadMeasurer loadMeasurer_;
 
