@@ -15,6 +15,7 @@
 #include "EffectChain.h"
 #include "InputMixer.h"
 #include "LatencyProbe.h"
+#include "TunerTap.h"
 #include "dsp/effects/Gain.h"
 #include "dsp/effects/SafetyLimiter.h"
 #include <atomic>
@@ -42,6 +43,7 @@ public:
     SafetyLimiter& limiter()   { return limiter_; }
     EffectChain& chain()       { return chain_; }
     LatencyProbe& latencyProbe() { return probe_; }
+    TunerTap& tuner() { return tuner_; }
     InputMixer& input()        { return input_; }
     // Mono (summa) ut: alla utgångar får (L+R)/2. För när bara en kanal går till mixern –
     // då hörs stereoeffekterna korrekt i stället för bara vänster sida.
@@ -67,6 +69,7 @@ private:
     EffectChain chain_;
     SafetyLimiter limiter_;
     LatencyProbe probe_;
+    TunerTap tuner_;
 
     InputMixer input_;
     std::atomic<float> inputPeak_[2] { 0.0f, 0.0f }, outputPeak_ { 0.0f };

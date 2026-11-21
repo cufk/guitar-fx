@@ -12,6 +12,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "Icons.h"
 #include "Theme.h"
+#include "dsp/core/PitchDetector.h"
 #include "../PluginProcessor.h"
 
 namespace ui {
@@ -163,6 +164,35 @@ private:
     std::vector<std::pair<juce::String, int>> captions_;
 };
 
+// Stämapparat (täcker huvudytan när den är öppen). Läser ingången via TunerTap och
+// kör PitchDetector på GUI-tråden. Stora tecken så att den går att läsa på avstånd.
+class TunerView final : public juce::Component, private juce::Timer {
+public:
+    explicit TunerView(GuitarFXProcessor& proc);
+    void setOpen(bool open);
+    bool isOpen() const { return open_; }
+    std::function<void()> onClose;
+    void paint(juce::Graphics&) override;
+    void resized() override;
+private:
+    void timerCallback() override;
+    GuitarFXProcessor& proc_;
+    gfx::PitchDetector detector_;
+    std::vector<float> window_;
+    Pill mute_ { "Tysta ut" };
+    Pill reference_ { "A4 = 440 Hz", false };
+    Pill close_ { "Klar", false };
+    std::vector<std::unique_ptr<Pill>> strings_;
+    bool open_ = false;
+    float referenceA4_ = 440.0f;
+    // Utjämnat resultat.
+    float hz_ = 0.0f, cents_ = 0.0f, shownCents_ = 0.0f;
+    int midi_ = 0, holdTicks_ = 0;
+    std::vector<float> recent_;
+    juce::Rectangle<float> arcArea_;
+    juce::Rectangle<int> noteArea_, infoArea_;
+};
+
 // Sidhuvud: stor rubrik med aktivt läge, ingångspiller och meny.
 class HeaderBar final : public juce::Component {
 public:
@@ -171,6 +201,7 @@ public:
     void paint(juce::Graphics&) override;
     void resized() override;
     Pill input { juce::String::fromUTF8("Ingång 1"), false };
+    Pill tune { juce::String::fromUTF8("Stäm"), false };
     IconButton more { icons::Symbol::More, "Fler val", false };
 private:
     juce::String subtitle_;

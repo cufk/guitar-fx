@@ -16,6 +16,7 @@ void Engine::prepare(const ProcessSpec& spec) {
     limiter_.prepare(spec);
     probe_.prepare(spec.sampleRate);
     input_.prepare(spec.sampleRate);
+    tuner_.prepare();
 }
 
 void Engine::reset() {
@@ -45,8 +46,10 @@ void Engine::process(AudioBufferView io) {
     // Effektkedjan och ingångsblandningen hoppas över, men limitern körs alltid.
     const int probeSrc = (hasIn2 && input_.mode.load(std::memory_order_relaxed) == InputMixer::Input2) ? 1 : 0;
     const bool probing = probe_.process(io.channels[probeSrc], io.channels[0], io.numSamples);
-    if (!probing)
+    if (!probing) {
         input_.process(io.channels[0], hasIn2 ? io.channels[1] : nullptr, io.channels[0], io.numSamples);
+        tuner_.push(io.channels[0], io.numSamples);   // stämapparaten: torr signal efter ingångsväljaren
+    }
 
     for (int ch = 1; ch < io.numChannels; ++ch)
         std::memcpy(io.channels[ch], io.channels[0], sizeof(float) * static_cast<size_t>(io.numSamples));
@@ -65,6 +68,11 @@ void Engine::process(AudioBufferView io) {
         if (probing) limiter_.process(chunk);
         else         processChunk(chunk);
     }
+
+    // Stämapparat med "tysta utgången": inget ljud ut medan man stämmer.
+    if (tuner_.shouldMute())
+        for (int ch = 0; ch < usedCh; ++ch)
+            std::memset(io.channels[ch], 0, sizeof(float) * static_cast<size_t>(io.numSamples));
 
     // 3. Mätare.
     float outPeak = 0.0f;

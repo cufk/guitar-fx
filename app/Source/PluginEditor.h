@@ -4,7 +4,7 @@
 //   vänster   – ring av streck (utnivå) runt aktivt presetnummer, namn, bläddring, mätare
 //   höger     – effekterna som rutor + vald effekt med runda rattar
 //   nederst   – presets som piller (ett i taget, igen = grundljud)
-// Tangenter: 1–9 = preset, 0/Esc = grundljud, ←/→ = föregående/nästa.
+// Tangenter: 1–9 = preset, 0/Esc = grundljud, ←/→ = föregående/nästa, T = stämapparat.
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "PluginProcessor.h"
@@ -26,6 +26,7 @@ private:
     void timerCallback() override;
     void applyAppearance(bool force);
     void showMoreMenu();
+    void setTunerOpen(bool open);
     void startLatencyMeasurement();
     void exportPresets();
     void importPresets();
@@ -38,6 +39,7 @@ private:
     ui::EffectGrid grid_;
     ui::EffectPanel panel_;
     ui::PresetBar presets_;
+    ui::TunerView tunerView_;
     juce::TooltipWindow tooltips_ { this, 700 };
     std::unique_ptr<juce::FileChooser> chooser_;
 

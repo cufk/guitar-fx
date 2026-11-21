@@ -4,7 +4,7 @@ Egen gitarreffektprocessor: chorus, flanger, reverb och distortion. Utvecklas p�
 med Focusrite Scarlett och är byggd för att flyttas till iPad (live) och eventuellt
 Raspberry Pi eller egen pedal.
 
-## Status (v0.6 – sustain, widener, nytt monokromt GUI)
+## Status (v0.7 – stämapparat, fast rutnät)
 
 - Portabel DSP-kärna och ljudmotor utan beroenden (`dsp/`, `engine/`)
 - **Ingångssteg för akustisk gitarr:** Ingång 1, Ingång 2 eller **Blanda 1 + 2**
@@ -18,6 +18,9 @@ Raspberry Pi eller egen pedal.
   tryck igen för att gå tillbaka till grundljudet. Styrs med knapparna, tangenter eller
   MIDI-fotswitch (även Bluetooth). Reverbsvansen klingar ut naturligt vid byte.
 - **EQ:** lågskärning, bas, mitt (valbar frekvens), diskant och smal notch mot rundgång.
+- **Stämapparat:** tryck **Stäm** (eller T / MIDI CC 105). Stor tonbokstav, halvcirkel
+  −50…+50 cent, närmaste sträng (E A D G B E) markeras. Utgången tystas medan du stämmer
+  (kan stängas av), referens A4 430–446 Hz. Noggrannhet < 1 cent i hela gitarrens register.
 - **Sustain:** kompressor för längre ton – sustain, anslag, släpp, nivå och mix
   (parallellkompression som behåller anslaget). Visar hur mycket den komprimerar.
 - **Widener:** bredare stereo med mitt/sida-teknik – exakt monokompatibel (L+R = originalet).
@@ -48,11 +51,12 @@ Raspberry Pi eller egen pedal.
 
 ```
 dsp/            Ren C++20. Effect-interface, buffrar, parametrar, effekter.
-  core/         Biquad, DelayLine/Lfo, Oversampler4x, FFT, Convolver, Parameter, DspUtils
+  core/         Biquad, DelayLine/Lfo, Oversampler4x, FFT, Convolver, PitchDetector,
+                Parameter, DspUtils
   effects/      Gain, SafetyLimiter, Eq, Sustain, Distortion, Cabinet, Chorus, Flanger,
                 Widener, Reverb
 engine/         InputMixer, effektkedja, Engine (ingång → in-gain → kedja → ut-gain →
-                limiter), LatencyProbe, Rig (grundljud + presets).
+                limiter), LatencyProbe, TunerTap, Rig (grundljud + presets).
 app/Source/ui/  Tema (monokromt, Inter), ikoner och GUI-komponenter.
 app/Resources/  Typsnitt (Inter, SIL Open Font License).
 app/            JUCE-skal (Standalone/plugin) + GUI. Endast limkod.
@@ -157,7 +161,8 @@ längst ned och ställ in EQ och de effekter som alltid ska vara på (t.ex. ett 
 
 **Gränssnittet:**
 - Rutorna uppe till höger är effekterna (fylld prick = på). Tryck på en för att visa dess
-  rattar nedanför. Dra en ratt uppåt/nedåt; dubbelklick återställer standardvärdet.
+  rattar nedanför. Rattarna följer samma fyra kolumner som effektrutorna (två rattar tar
+  två kolumner). Dra en ratt uppåt/nedåt; dubbelklick återställer standardvärdet.
 - Reglaget till höger om effektens namn slår på/av den.
 - Vänster spalt visar aktivt preset (stort nummer och namn), utnivån som en ring av streck
   och ← / → för att bläddra.
@@ -186,6 +191,7 @@ Appen startar med exempel – *Stor hall*, *Chorus* och *Flanger-svep* – att �
 | **←** / **→** (även Page Up/Down) | Föregående / nästa |
 | MIDI **Program Change 0–8** | Preset 1–9 |
 | MIDI **CC 102 / 103 / 104** (värde ≥ 64) | Föregående / nästa / grundljud |
+| Tangent **T** eller MIDI **CC 105** | Stämapparat på/av |
 
 MIDI-ingångar (även Bluetooth-MIDI-pedaler som parats i macOS *Ljud-MIDI-inställningar*)
 öppnas automatiskt. Ljudkort och MIDI väljs under **⋯ → Ljudinställningar…**. Pedaler som i stället
@@ -238,11 +244,13 @@ referens när effekterna utvecklas.
 5. ✅ Chorus, flanger och reverb (FDN)
 6. ✅ EQ med notch, grundljud + presets, MIDI/tangenter
 7. ✅ Sustain (kompressor), widener, mono-utgång, monokromt GUI med runda rattar
-8. Delay
-9. Kroppssimulering för inbyggd mikrofon (IR via befintlig faltning)
-10. MIDI learn (valfria meddelanden per preset), scenläge med extra stora knappar
-11. iOS-bygge och live-härdning (ljudsessionsavbrott, återanslutning av ljudkort)
-12. (Valfritt) Raspberry Pi / Daisy Seed
+8. ✅ Stämapparat
+9. Låtanalys → förslag på preset
+10. Delay
+11. Kroppssimulering för inbyggd mikrofon (IR via befintlig faltning)
+12. MIDI learn (valfria meddelanden per preset), scenläge med extra stora knappar
+13. iOS-bygge och live-härdning (ljudsessionsavbrott, återanslutning av ljudkort)
+14. (Valfritt) Raspberry Pi / Daisy Seed
 
 ## Live-säkerhet – regler som alltid gäller
 

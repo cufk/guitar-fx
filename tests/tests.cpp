@@ -6,6 +6,7 @@
 #include "engine/Engine.h"
 #include "dsp/core/Convolver.h"
 #include "dsp/core/Oversampler.h"
+#include "dsp/core/PitchDetector.h"
 #include "dsp/effects/Cabinet.h"
 #include "dsp/effects/Chorus.h"
 #include "dsp/effects/Eq.h"
@@ -1087,6 +1088,92 @@ int main() {
         float err = 0.0f;
         for (size_t i = 0; i < ref.size(); ++i) err = std::max({ err, std::fabs(s.l[i] - s.r[i]), std::fabs(s.l[i] - ref[i]) });
         CHECK(err < 1.0e-5f);
+    });
+
+
+    // ----------------------------------------------------------------- Stämapparat
+    run("Stämapparat: gitarrens strängar (med övertoner) träffas inom 1 cent", [] {
+        gfx::PitchDetector pd;
+        pd.prepare(kSr, 4096);
+        // Standardstämning + drop D + några toner högt upp på halsen.
+        for (float hz : { 73.42f, 82.41f, 110.0f, 146.83f, 196.0f, 246.94f, 329.63f, 440.0f, 659.26f, 987.77f }) {
+            std::vector<float> x(4096);
+            // Plockad sträng: grundton + avtagande övertoner (2:a ofta starkare än grundtonen).
+            const float amps[6] = { 0.6f, 0.8f, 0.4f, 0.3f, 0.15f, 0.1f };
+            for (size_t i = 0; i < x.size(); ++i) {
+                float v = 0.0f;
+                for (int k = 0; k < 6; ++k) v += amps[k] * std::sin(2.0f * 3.14159265f * hz * float(k + 1) * float(i) / float(kSr));
+                x[i] = 0.2f * v;
+            }
+            const auto r = pd.detect(x.data(), int(x.size()));
+            const float cents = 1200.0f * std::log2(r.hz / hz);
+            if (std::fabs(cents) >= 1.0f) std::printf("       %.2f Hz -> %.2f Hz (%.2f cent)\n", hz, r.hz, cents);
+            CHECK(std::fabs(cents) < 1.0f);
+            CHECK(r.confidence > 0.8f);
+        }
+    });
+
+    run("Stämapparat: brus och tystnad ger ingen säker ton", [] {
+        gfx::PitchDetector pd;
+        pd.prepare(kSr, 4096);
+        std::vector<float> silence(4096, 0.0f);
+        CHECK(pd.detect(silence.data(), 4096).hz == 0.0f);
+        std::mt19937 rng(4);
+        std::normal_distribution<float> nd(0.0f, 0.2f);
+        std::vector<float> noise(4096);
+        for (auto& v : noise) v = nd(rng);
+        CHECK(pd.detect(noise.data(), 4096).confidence < 0.6f);
+    });
+
+    run("Stämapparat: ton och cent räknas rätt (även annan referens än 440 Hz)", [] {
+        auto e = gfx::noteFromHz(82.41f);
+        CHECK(e.name == "E" && e.octave == 2 && std::fabs(e.cents) < 1.0f);
+        auto a = gfx::noteFromHz(440.0f * std::pow(2.0f, 10.0f / 1200.0f));   // +10 cent
+        CHECK(a.name == "A" && a.octave == 4 && std::fabs(a.cents - 10.0f) < 0.1f);
+        auto b = gfx::noteFromHz(432.0f, 432.0f);
+        CHECK(b.name == "A" && std::fabs(b.cents) < 0.01f);
+        CHECK(std::fabs(gfx::hzFromMidi(40) - 82.41f) < 0.01f);   // låga E
+    });
+
+    run("Stämapparat: kan läsas även om ljudmotorn aldrig startat (inget ljudkort)", [] {
+        gfx::Engine e;   // ingen prepare()
+        std::vector<float> win(4096, 1.0f);
+        e.tuner().latest(win.data(), 4096);
+        float peak = 0.0f;
+        for (float v : win) peak = std::max(peak, std::fabs(v));
+        CHECK(peak == 0.0f);
+    });
+
+    run("Stämapparat: avtappning, tyst utgång och inga allokeringar på ljudtråden", [] {
+        gfx::Engine e;
+        e.prepare({ kSr, kBlock, 2 });
+        e.tuner().active = true;
+        e.tuner().muteOutput = true;
+        Stereo s(kBlock * 100);
+        sine(s.l, 0.3f, 110.0f);
+        {
+            NoAllocScope scope;
+            runEngine(e, s, kBlock * 100);
+            CHECK(scope.count() == 0);
+        }
+        float outPeak = 0.0f;
+        for (float v : s.l) outPeak = std::max(outPeak, std::fabs(v));
+        CHECK(outPeak == 0.0f);                       // tyst utgång medan man stämmer
+        std::vector<float> win(4096);
+        e.tuner().latest(win.data(), 4096);
+        gfx::PitchDetector pd;
+        pd.prepare(kSr, 4096);
+        const auto r = pd.detect(win.data(), 4096);
+        CHECK(std::fabs(1200.0f * std::log2(r.hz / 110.0f)) < 1.0f);
+
+        // Stämapparaten stängd: ljudet går igenom igen.
+        e.tuner().active = false;
+        Stereo t(4800);
+        sine(t.l, 0.3f, 110.0f);
+        runEngine(e, t, 4800);
+        float peak = 0.0f;
+        for (float v : t.l) peak = std::max(peak, std::fabs(v));
+        CHECK(peak > 0.25f);
     });
 
     std::printf("\n%s (%d fel)\n", gFailures == 0 ? "ALLA TESTER OK" : "TESTER MISSLYCKADES", gFailures);
