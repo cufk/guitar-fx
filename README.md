@@ -95,7 +95,10 @@ byggs i stället ett litet ALSA/JACK-värdprogram runt `gfx::Engine`.
    distortion är på och visas i statusraden.
 
 "Ingen signal" betyder att klicket inte kom tillbaka (kabel, fel ingång, för låg gain).
-Om Scarletts "Direct Monitor" är på hörs klicken direkt – det påverkar inte mätningen.
+Stäng av Scarletts **Direct Monitor** (och Air) före mätningen. Med loopback-kabeln
+skulle Direct Monitor annars skicka ingången rakt tillbaka till utgången – en
+återkopplingsslinga som kan tjuta. Monitor-ratten styr nivån på Line Out 1/2;
+ställ den på ungefär halvvägs.
 
 ## Offline-verktyget
 
