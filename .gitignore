@@ -6,3 +6,4 @@ xcuserdata/
 .idea/
 *.wav
 !tests/data/*.wav
+dist/

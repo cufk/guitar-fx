@@ -104,6 +104,26 @@ Ingång och utgång måste vara **samma ljudenhet** (Scarlett), annars ökar lat
 3. Använd hörlurar eller förstärkare, inte datorns högtalare (rundgång).
 4. Ställ in gain på Scarlett så att IN-mätaren ligger kring gul vid hårt anslag.
 
+## Bygga Stagebox.app och .dmg
+
+På en Mac med Xcode och CMake:
+
+```bash
+./scripts/build-mac.sh
+```
+
+Skriptet bygger en universell app (Apple Silicon + Intel), kör testerna, signerar ad hoc och
+lägger `Stagebox.app` och `Stagebox-<version>.dmg` i `dist/`. Bara Apple Silicon (snabbare):
+`ARCHS=arm64 ./scripts/build-mac.sh`.
+
+**Automatiskt på GitHub:** varje push till `main` bygger samma .dmg på en Mac i GitHub
+Actions. Hämta den under *Actions → Bygg → senaste körningen → Artifacts → Stagebox-dmg*.
+
+Appen är inte signerad med ett Apple-utvecklarcertifikat. Första gången på en ny Mac:
+högerklicka på Stagebox → **Öppna** → **Öppna** (eller
+`xattr -dr com.apple.quarantine /Applications/Stagebox.app`). För att slippa det krävs ett
+betalt Apple Developer-konto (Developer ID-signering och notarisering).
+
 ## iOS (senare)
 
 ```bash

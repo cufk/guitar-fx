@@ -52,6 +52,8 @@ Driftsäkerhet live är huvudkravet. Svara på svenska.
 - Bara kärnan (snabbt): `cmake -B build-core -DGFX_BUILD_APP=OFF && cmake --build build-core`
 - Offline: `build/tools/offline-render/gfx-render in.wav ut.wav`
 - Appen: `build/app/Stagebox_artefacts/Release/Standalone/Stagebox.app`
+- Paketera (Mac): `./scripts/build-mac.sh` → `dist/Stagebox.app` + `dist/Stagebox-<version>.dmg`
+- CI: `.github/workflows/build.yml` – tester på Linux; .dmg på macOS vid push till main
 
 ## Nästa steg
 Se "Färdplan" i README.md. Klart: akustisk ingång, EQ med notch, sustain (kompressor),
