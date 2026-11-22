@@ -3,10 +3,10 @@
 // som får gitarren att låta mer som i låten. Ren signalanalys – ingen nedladdning,
 // inget nätverk, fungerar likadant på Mac, iPad och Raspberry Pi.
 //
-//  Klang    medelspektrum jämfört med en rak lutning (som de flesta mixar följer):
-//           avvikelser i bas / mitt / diskant blir EQ-förslag (halva avvikelsen, ±6 dB).
-//  Rum      hur snabbt nivån faller efter anslag (efterklang) och hur mycket energi som
-//           ligger kvar mellan anslagen (mix). Tidsavståndet till tidig energi -> predelay.
+//  Klang    tersbandsspektrum jämfört med en referenskurva för inspelad musik: avvikelser i
+//           bas / diskant blir EQ (halva avvikelsen, ±6 dB); mitten bara vid tydlig topp/dal.
+//  Rum      stereo: koherens mellan vänster och höger (efterklang gör kanalerna osammanhängande);
+//           mono: sen avklingning i fria avklingningar; för lite underlag -> försiktigt standardval.
 //  Bredd    sida/mitt-förhållande och korrelation mellan vänster och höger -> widener.
 //  Dynamik  spridning i korttidsnivå (p95 - p10) -> hur komprimerat -> sustain.
 //  Tempo    autokorrelation av anslagsstyrkan, 60–180 BPM.
@@ -36,7 +36,11 @@ struct SongAnalysis {
     float width = 0.0f, compression = 0.0f;
 
     // Underlag (för förklaringar och tester)
-    float sideToMid = 0.0f, correlation = 1.0f, loudnessRangeDb = 0.0f, decayDbPerSec = 0.0f, floorToPeakDb = 0.0f;
+    float sideToMid = 0.0f, correlation = 1.0f, loudnessRangeDb = 0.0f;
+    float coherence = 1.0f;     // vänster/höger, 300 Hz – 6 kHz (1 = samma signal)
+    int decaySegments = 0;      // antal fria avklingningar (mono)
+    enum class RoomMeasure { Stereo, MonoDecay, Default };
+    RoomMeasure roomMeasure = RoomMeasure::Default;   // hur rummet mättes
 
     // Korta förklaringar på svenska (UTF-8), en per område.
     std::string toneText, roomText, widthText, dynamicsText;

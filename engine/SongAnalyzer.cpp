@@ -77,39 +77,50 @@ SongAnalysis analyseSong(const float* left, const float* right, int numSamples, 
         const int k0 = std::max(1, static_cast<int>(lo * kN / sr)), k1 = std::min(kN / 2 - 1, static_cast<int>(hi * kN / sr));
         if (k1 < k0) continue;
         double e = 0.0;
-        for (int k = k0; k <= k1; ++k) e += power[size_t(k)];
-        e /= (k1 - k0 + 1);
+        for (int k = k0; k <= k1; ++k) e += power[size_t(k)];   // bandenergi (som en tersbandsanalys)
         bands.push_back({ fc, 10.0 * std::log10(e / frames + 1e-20) });
     }
-    double sx = 0, sy = 0, sxx = 0, sxy = 0; int cnt = 0;
-    for (const auto& b : bands) if (b.hz >= 100.0 && b.hz <= 10000.0) {
-        const double x = std::log2(b.hz);
-        sx += x; sy += b.db; sxx += x * x; sxy += x * b.db; ++cnt;
-    }
-    const double slope = (cnt * sxy - sx * sy) / std::max(1e-9, cnt * sxx - sx * sx);
-    const double icept = (sy - slope * sx) / std::max(1, cnt);
-    // Bas och diskant jämförs med en fast referens – en typisk mix som lutar ca −4,5 dB per
-    // oktav – förankrad i mellanregistret (500 Hz – 2 kHz). En anpassad linje skulle följa
-    // med låtens egen lutning och dölja just det vi vill mäta.
+    // Referens: genomsnittlig tersbandsnivå för inspelad musik relativt 1 kHz (dB). Sammanvägd
+    // från publicerade långtidsspektrum för kommersiell musik och ett urval akustiska inspelningar:
+    // fyllig bas kring 100–250 Hz och ett jämnt fall över 2 kHz.
+    static const double kRefHz[] = { 50, 63, 80, 100, 125, 160, 200, 250, 315, 400, 500, 630, 800,
+                                     1000, 1250, 1600, 2000, 2500, 3150, 4000, 5000, 6300, 8000, 10000, 12500 };
+    static const double kRefDb[] = { 2, 4, 5, 6, 6, 5.5, 5, 4.5, 4, 3, 2.5, 1.5, 0.5,
+                                     0, -1, -2, -3.5, -4.5, -5.5, -7, -8.5, -10, -12, -14, -17 };
+    auto refAt = [&](double hz) {
+        const int n = static_cast<int>(std::size(kRefHz));
+        if (hz <= kRefHz[0]) return kRefDb[0];
+        for (int i = 1; i < n; ++i)
+            if (hz <= kRefHz[i]) {
+                const double t = std::log2(hz / kRefHz[i - 1]) / std::log2(kRefHz[i] / kRefHz[i - 1]);
+                return kRefDb[i - 1] + t * (kRefDb[i] - kRefDb[i - 1]);
+            }
+        return kRefDb[n - 1];
+    };
+    // Förankra kurvan i mellanregistret (500 Hz – 2 kHz).
     double anchor = 0.0; int na = 0;
-    for (const auto& b : bands) if (b.hz >= 500.0 && b.hz <= 2000.0) { anchor += b.db + 4.5 * std::log2(b.hz / 1000.0); ++na; }
+    for (const auto& b : bands) if (b.hz >= 500.0 && b.hz <= 2000.0) { anchor += b.db - refAt(b.hz); ++na; }
     anchor = na ? anchor / na : 0.0;
+    auto devAt = [&](const Band& b) { return static_cast<float>(b.db - anchor - refAt(b.hz)); };
     auto devRef = [&](double f0, double f1) {
         double sum = 0; int n = 0;
-        for (const auto& b : bands) if (b.hz >= f0 && b.hz <= f1) { sum += b.db - (anchor - 4.5 * std::log2(b.hz / 1000.0)); ++n; }
+        for (const auto& b : bands) if (b.hz >= f0 && b.hz <= f1) { sum += devAt(b); ++n; }
         return n ? static_cast<float>(sum / n) : 0.0f;
     };
     a.lowGainDb  = std::clamp(0.5f * devRef(70.0, 200.0), -6.0f, 6.0f);
     a.highGainDb = std::clamp(0.5f * devRef(4500.0, 11000.0), -6.0f, 6.0f);
+    // Mitten: bara en tydlig topp/dal (> 3 dB från referensen), och försiktigt.
     float bestDev = 0.0f;
+    const float midLevel = devRef(250.0, 3000.0);
     for (const auto& b : bands) if (b.hz >= 250.0 && b.hz <= 3000.0) {
-        const float d = static_cast<float>(b.db - (icept + slope * std::log2(b.hz)));
+        const float d = devAt(b) - midLevel;   // relativt mittregistrets nivå
         if (std::fabs(d) > std::fabs(bestDev)) { bestDev = d; a.midHz = static_cast<float>(b.hz); }
     }
-    a.midGainDb = std::clamp(0.5f * bestDev, -6.0f, 6.0f);
-    // Lite energi under 80 Hz relativt linjen => skär lågt (typiskt för akustisk gitarr i mix).
+    a.midGainDb = std::fabs(bestDev) > 3.0f ? std::clamp(0.4f * bestDev, -4.0f, 4.0f) : 0.0f;
+    if (a.midGainDb == 0.0f) a.midHz = 800.0f;
+    // Lågskärning: mycket subbas i låten -> låg, nästan ingen -> högre.
     const float subDev = devRef(45.0, 80.0) - devRef(100.0, 200.0);
-    a.lowCutHz = subDev < -6.0f ? 120.0f : subDev < -2.0f ? 90.0f : 60.0f;
+    a.lowCutHz = subDev > -2.0f ? 60.0f : subDev > -10.0f ? 80.0f : 110.0f;
     if (!report(0.55f)) return {};
 
     // ------------------------------------------------------------------ 2. Korttidsnivå (10 ms)
@@ -180,53 +191,135 @@ SongAnalysis analyseSong(const float* left, const float* right, int numSamples, 
             a.bpm = static_cast<float>(6000.0 / (bestLag + frac) * (sr / (100.0 * hop)));   // korrigera för verklig bildtakt
         }
     }
-    // Avklingning (rum). Rummets efterklang syns bäst där tonerna får klinga ut:
-    //  1. I pauser på minst 0,8 s (frasslut, låtens slut) mäts den sena delen av utklingningen
-    //     (0,4–2,5 s efter anslaget) – där dominerar rummet över tonens egen avklingning.
-    //  2. Finns inga pauser mäts 150 ms fram till nästa anslag (tätt spelade låtar).
+    // ------------------------------------------------------------------ 6. Rum
+    // Tät musik har sällan fria avklingningar (något spelar alltid), så "hur snabbt faller
+    // nivån" ger nästan alltid lång efterklang. Därför:
+    //  Stereo: koherensen mellan vänster och höger (300 Hz – 6 kHz). Panorerade instrument är
+    //          sammanhängande per frekvens; efterklang gör kanalerna osammanhängande. Låg
+    //          koherens = mycket rum (längre och mer reverb).
+    //  Mono:   den sena delen av fria avklingningar i mellan/diskant (tvådelad anpassning –
+    //          tonens egen snabba början räknas bort). För få avklingningar = försiktigt
+    //          standardval i stället för en gissning.
     {
-        const float onsetThr = std::max(3.0f, percentile(flux, 0.97f));
-        const float noiseFloor = percentile(envDb, 0.05f) + 6.0f;
-        std::vector<int> onsets;
-        for (int f = 1; f < nFrames; ++f)
-            if (flux[size_t(f)] >= onsetThr && (onsets.empty() || f - onsets.back() > 8)) onsets.push_back(f);
-
-        auto fitSlope = [&](int peak, int w0, int w1, int minN) -> float {
-            double sx2 = 0, sy2 = 0, sxx2 = 0, sxy2 = 0; int n = 0;
-            for (int k = w0; k < w1 && k < nFrames; ++k) {
-                const float lv = envDb[size_t(k)];
-                if (lv < top - 65.0f || lv < noiseFloor) break;   // under brusgolvet
-                const double x = (k - peak) * 0.01;
-                sx2 += x; sy2 += lv; sxx2 += x * x; sxy2 += x * lv; ++n;
+        if (!report(0.8f)) return {};
+        if (right != nullptr && a.sideToMid > 0.015f) {   // tydligt stereo; nästan-mono mäts som mono
+            constexpr int N = 2048, H = 1024, K = 16;   // block om ~0,35 s
+            FFT f2; f2.prepare(N);
+            std::vector<std::complex<float>> bl(N), br(N);
+            std::vector<float> w2(N);
+            for (int i = 0; i < N; ++i) w2[size_t(i)] = static_cast<float>(0.5 - 0.5 * std::cos(2.0 * kPi * i / (N - 1)));
+            const int k0 = static_cast<int>(300.0 * N / sr), k1 = std::min(N / 2 - 1, static_cast<int>(6000.0 * N / sr));
+            const int nb = k1 - k0 + 1;
+            std::vector<std::complex<double>> sxy(static_cast<size_t>(nb));
+            std::vector<double> sxx(static_cast<size_t>(nb)), syy(static_cast<size_t>(nb));
+            std::vector<std::pair<double, double>> blocks;   // (koherens, energi)
+            int inBlock = 0;
+            for (int start = 0; start + N <= numSamples; start += H) {
+                for (int i = 0; i < N; ++i) {
+                    bl[size_t(i)] = { left[start + i] * w2[size_t(i)], 0.0f };
+                    br[size_t(i)] = { right[start + i] * w2[size_t(i)], 0.0f };
+                }
+                f2.forward(bl.data()); f2.forward(br.data());
+                for (int k = 0; k < nb; ++k) {
+                    const auto L = std::complex<double>(bl[size_t(k0 + k)]), R = std::complex<double>(br[size_t(k0 + k)]);
+                    sxy[size_t(k)] += L * std::conj(R); sxx[size_t(k)] += std::norm(L); syy[size_t(k)] += std::norm(R);
+                }
+                if (++inBlock == K) {
+                    double num = 0.0, den = 0.0;
+                    for (int k = 0; k < nb; ++k) {
+                        const double wgt = sxx[size_t(k)] + syy[size_t(k)];
+                        const double c = std::norm(sxy[size_t(k)]) / (sxx[size_t(k)] * syy[size_t(k)] + 1e-30);
+                        num += c * wgt; den += wgt;
+                        sxy[size_t(k)] = 0.0; sxx[size_t(k)] = 0.0; syy[size_t(k)] = 0.0;
+                    }
+                    if (den > 0.0) blocks.push_back({ num / den, den });
+                    inBlock = 0;
+                }
             }
-            if (n < minN) return 0.0f;
-            const double sl = (n * sxy2 - sx2 * sy2) / std::max(1e-9, n * sxx2 - sx2 * sx2);
-            return sl < 0.0 ? static_cast<float>(sl) : 0.0f;
-        };
-        auto peakAfter = [&](int f) {
-            int peak = f;
-            for (int k = f; k < std::min(nFrames, f + 5); ++k) if (envDb[size_t(k)] > envDb[size_t(peak)]) peak = k;
-            return peak;
-        };
-
-        std::vector<float> gapSlopes, slopes;
-        for (size_t i = 0; i < onsets.size(); ++i) {
-            const int peak = peakAfter(onsets[i]);
-            if (envDb[size_t(peak)] < top - 30.0f) continue;
-            const int next = i + 1 < onsets.size() ? onsets[i + 1] : nFrames;
-            if (next - peak >= 80) {
-                if (const float sl = fitSlope(peak, peak + 40, std::min(next - 3, peak + 250), 20); sl < 0.0f) gapSlopes.push_back(sl);
+            // Bara aktiva block (över 30:e percentilen i energi), energiviktat.
+            std::vector<float> energies;
+            for (const auto& b : blocks) energies.push_back(static_cast<float>(b.second));
+            const float eThr = percentile(energies, 0.3f);
+            double num = 0.0, den = 0.0;
+            for (const auto& b : blocks) if (b.second >= eThr) { num += b.first * b.second; den += b.second; }
+            a.coherence = den > 0.0 ? static_cast<float>(num / den) : 1.0f;
+            const float amount = std::clamp((0.95f - a.coherence) / 0.45f, 0.0f, 1.0f);
+            a.reverbDecaySec = 0.8f + 3.2f * amount;
+            a.reverbMix = 0.12f + 0.28f * amount;
+            a.roomMeasure = SongAnalysis::RoomMeasure::Stereo;
+        } else {
+            // Mono: bandbegränsad nivå (500 Hz – 4 kHz) i 10 ms-steg.
+            constexpr int N = 1024;
+            FFT f3; f3.prepare(N);
+            std::vector<std::complex<float>> b3(N);
+            std::vector<float> w3(N);
+            for (int i = 0; i < N; ++i) w3[size_t(i)] = static_cast<float>(0.5 - 0.5 * std::cos(2.0 * kPi * i / (N - 1)));
+            const int k0 = static_cast<int>(500.0 * N / sr), k1 = std::min(N / 2 - 1, static_cast<int>(4000.0 * N / sr));
+            std::vector<float> env;
+            for (int start = 0; start + N <= numSamples; start += hop) {
+                for (int i = 0; i < N; ++i) {
+                    const float m = right ? 0.5f * (left[start + i] + right[start + i]) : left[start + i];
+                    b3[size_t(i)] = { m * w3[size_t(i)], 0.0f };
+                }
+                f3.forward(b3.data());
+                double e = 0.0;
+                for (int k = k0; k <= k1; ++k) e += std::norm(b3[size_t(k)]);
+                env.push_back(static_cast<float>(10.0 * std::log10(e + 1e-12)));
             }
-            if (const float sl = fitSlope(peak, peak + 15, std::min(next - 3, peak + 100), 12); sl < 0.0f) slopes.push_back(sl);
+            const float envTop = percentile(env, 0.99f);
+            // Fria avklingningar: fallande (högst +1,5 dB krusning), minst 300 ms och 15 dB.
+            std::vector<float> late;
+            const int n = static_cast<int>(env.size());
+            for (int i = 0; i + 30 < n;) {
+                int j = i;
+                while (j + 1 < n && env[size_t(j + 1)] <= env[size_t(j)] + 1.5f && env[size_t(j + 1)] <= env[size_t(i)]) ++j;
+                if (j - i >= 30 && env[size_t(i)] - env[size_t(j)] >= 15.0f && env[size_t(i)] > envTop - 30.0f) {
+                    // Tvådelad linjär anpassning: hitta brytpunkten med minst fel, behåll den sena lutningen.
+                    const int L = j - i + 1;
+                    std::vector<double> X(size_t(L + 1), 0.0), Y(size_t(L + 1), 0.0), XX(size_t(L + 1), 0.0), XY(size_t(L + 1), 0.0), YY(size_t(L + 1), 0.0);
+                    for (int k = 0; k < L; ++k) {
+                        const double x = k * 0.01, y = env[size_t(i + k)];
+                        X[size_t(k + 1)] = X[size_t(k)] + x; Y[size_t(k + 1)] = Y[size_t(k)] + y;
+                        XX[size_t(k + 1)] = XX[size_t(k)] + x * x; XY[size_t(k + 1)] = XY[size_t(k)] + x * y; YY[size_t(k + 1)] = YY[size_t(k)] + y * y;
+                    }
+                    auto fit = [&](int a0, int a1, double& slope) {   // [a0, a1)
+                        const double m = a1 - a0, sx = X[size_t(a1)] - X[size_t(a0)], sy = Y[size_t(a1)] - Y[size_t(a0)];
+                        const double sxx = XX[size_t(a1)] - XX[size_t(a0)], sxy = XY[size_t(a1)] - XY[size_t(a0)], syy = YY[size_t(a1)] - YY[size_t(a0)];
+                        const double d = m * sxx - sx * sx;
+                        slope = d > 1e-12 ? (m * sxy - sx * sy) / d : 0.0;
+                        const double icpt = (sy - slope * sx) / m;
+                        return syy - 2 * slope * sxy - 2 * icpt * sy + slope * slope * sxx + 2 * slope * icpt * sx + m * icpt * icpt;
+                    };
+                    double bestErr = 1e300, bestLate = 0.0;
+                    for (int b = 5; b < L - 12; ++b) {
+                        double s1 = 0.0, s2 = 0.0;
+                        const double err = fit(0, b + 1, s1) + fit(b, L, s2);
+                        if (err < bestErr) { bestErr = err; bestLate = s2; }
+                    }
+                    if (bestLate < 0.0) late.push_back(static_cast<float>(bestLate));
+                    i = j;
+                } else {
+                    ++i;
+                }
+            }
+            a.decaySegments = static_cast<int>(late.size());
+            if (late.size() >= 20) {
+                const float rt = 60.0f / std::max(5.0f, -percentile(late, 0.5f));
+                // Halvvägs mot ett neutralt standardval – monomätningen är osäkrare än stereo.
+                a.reverbDecaySec = std::clamp(0.5f * rt + 0.5f * 1.5f, 0.8f, 2.8f);
+                a.reverbMix = std::clamp(0.12f + 0.06f * (a.reverbDecaySec - 0.8f), 0.12f, 0.25f);
+                a.roomMeasure = SongAnalysis::RoomMeasure::MonoDecay;
+            } else {
+                a.reverbDecaySec = 1.5f;
+                a.reverbMix = 0.15f;
+                a.roomMeasure = SongAnalysis::RoomMeasure::Default;
+            }
         }
-        if (!gapSlopes.empty()) slopes = gapSlopes;
-        a.decayDbPerSec = slopes.empty() ? -30.0f : percentile(slopes, 0.5f);
-        a.reverbDecaySec = std::clamp(60.0f / std::max(1.0f, -a.decayDbPerSec), 0.6f, 5.0f);
-        // Hur mycket som ligger kvar mellan anslagen: golv (p20) relativt toppar (p95).
-        a.floorToPeakDb = percentile(active, 0.20f) - percentile(active, 0.95f);
-        a.reverbMix = lerpClamp(a.floorToPeakDb, -30.0f, -8.0f, 0.10f, 0.45f);
         // Större rum (lång efterklang) -> lite längre predelay så att anslaget hörs.
-        a.reverbPredelayMs = lerpClamp(a.reverbDecaySec, 0.8f, 4.0f, 8.0f, 35.0f);
+        a.reverbPredelayMs = lerpClamp(a.reverbDecaySec, 0.8f, 4.0f, 8.0f, 30.0f);
+        // Bredd som kommer från rummet hanteras av reverben – widenern bara för panorerad bredd.
+        if (a.roomMeasure == SongAnalysis::RoomMeasure::Stereo)
+            a.width *= std::clamp((a.coherence - 0.4f) / 0.5f, 0.2f, 1.0f);
     }
     if (!report(1.0f)) return {};
 
@@ -242,6 +335,12 @@ SongAnalysis analyseSong(const float* left, const float* right, int numSamples, 
     a.toneText = describeTone();
     a.roomText = (a.reverbDecaySec > 2.8f ? "Stort rum" : a.reverbDecaySec > 1.5f ? "Mellanstort rum" : "Litet, torrt rum")
                + fmt(" – efterklang ca %.1f s, mix %.0f %%.", a.reverbDecaySec, a.reverbMix * 100.0);
+    if (a.roomMeasure == SongAnalysis::RoomMeasure::Stereo)
+        a.roomText += fmt(" Mätt på stereobilden (koherens %.2f).", a.coherence);
+    else if (a.roomMeasure == SongAnalysis::RoomMeasure::MonoDecay)
+        a.roomText += " Monoinspelning – mätt på avklingningar, ungefärligt.";
+    else
+        a.roomText = "Rummet gick inte att mäta säkert (mono och få pauser) – försiktigt standardval: efterklang 1,5 s, mix 15 %.";
     a.widthText = a.width > 0.6f ? "Brett stereoljud – widener föreslås."
                 : a.width > 0.25f ? "Måttligt brett – lätt widener föreslås."
                 : "Smalt, nästan mono – ingen widener.";

@@ -26,6 +26,9 @@ Driftsäkerhet live är huvudkravet. Svara på svenska.
   ringbuffert; "Mute" gäller bara medan GUI:t är öppet) + `dsp/core/PitchDetector.h` (YIN).
 - Låtanalys: `engine/SongAnalyzer` (ren signalanalys: klang, rum, bredd, dynamik, tempo) körs
   i egen tråd från `AnalysisView`; `GuitarFXProcessor::createPresetFromAnalysis` gör preset.
+  Rum: stereo via L/R-koherens, mono via sen avklingning (tvådelad anpassning), annars
+  standardval. Mät aldrig rum som "median av avklingning" i tät musik – det ger alltid max.
+  Kalibrerat mot CC-låtar från Internet Archive (testas lokalt, checkas inte in).
   Användaren valde signalanalys (inte Demucs/AI-separering) – Demucs kan bli ett Mac-tillval.
   Ny effekt = lägg till i kedjan + `rig_.addEffect({...})` i processorn; ruta, rattar och
   sparning kommer automatiskt.
