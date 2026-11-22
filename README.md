@@ -31,8 +31,8 @@ Raspberry Pi eller egen pedal.
 - **Widener:** bredare stereo med mitt/sida-teknik – exakt monokompatibel (L+R = originalet).
 - **Utgång Stereo / Mono (summa):** mono om bara en kanal går till mixern.
 - **Monokromt GUI med runda rattar:** varm off-white (eller mörkt), stora rubriker,
-  ring av streck som visar utnivån runt aktivt presetnummer, effekterna som rutor och
-  presets som piller. Eget appfönster utan JUCE:s "Options"-rad. Utseende: följ
+  presets som en setlist till vänster, effekterna som rutor och rattar i lika stora rutor;
+  en smal nivåmätare i sidhuvudet visar bara de ingångar som används. Eget appfönster utan JUCE:s "Options"-rad. Utseende: följ
   systemet, ljust eller mörkt (⋯ → Utseende). Typsnitt: Inter (inbäddat, OFL-licens).
 - **Chorus** (hastighet, djup, mix) och **Flanger** (hastighet, djup, återkoppling, mix),
   båda i stereo: vänster och höger sveper i olika fas.
@@ -181,30 +181,33 @@ för stereo i PA:t.
 
 ## Grundljud och presets
 
-**Grundljudet** är det som hörs när inget preset är aktivt. Välj pillret **0 Grundljud**
-längst ned och ställ in EQ och de effekter som alltid ska vara på (t.ex. ett diskret rum).
+**Grundljudet** är det som hörs när inget preset är aktivt. Välj **0 Grundljud**
+överst i setlistan och ställ in EQ och de effekter som alltid ska vara på (t.ex. ett diskret rum).
 
 **Gränssnittet:**
 - Rutorna uppe till höger är effekterna (fylld prick = på). Tryck på en för att visa dess
-  rattar nedanför. Rattarna följer samma fyra kolumner som effektrutorna (två rattar tar
-  två kolumner). Dra en ratt uppåt/nedåt; dubbelklick återställer standardvärdet.
+  rattar nedanför. Rattarna ligger i rutor som alltid är lika stora, i samma fyra kolumner
+  som effektrutorna. Dra en ratt uppåt/nedåt; dubbelklick återställer standardvärdet.
 - Reglaget till höger om effektens namn slår på/av den.
-- Vänster spalt visar aktivt preset (stort nummer och namn), utnivån som en ring av streck
-  och ← / → för att bläddra.
+- Vänster spalt är **setlistan**: grundljudet överst och sedan presets i spelordning. Dra en
+  rad (handtaget ≡) för att flytta den; **‹ Föregående / Nästa ›** stegar genom listan – samma
+  sak som ←/→, fotswitch eller Bluetooth-pedal (MIDI CC 102/103).
+- Nivåmätaren uppe till höger visar insignalen – bara IN 1, IN 2 eller båda beroende på
+  vald ingång. Röd = överstyrning. CPU, limiter, latens och MIDI visas i **⋯**-menyn.
 - Alla inställningar finns under **⋯** uppe till höger: ingång och utgång, ljudinställningar,
   latensmätning, export/import av presets och utseende.
-- Ikonen med ljudvågen bredvid **+** längst ned öppnar låtanalysen.
+- Ikonen med ljudvågen bredvid **+** ovanför setlistan öppnar låtanalysen.
 
 **Ett preset** är en eller flera effekter med egna inställningar:
-1. Tryck **+** längst ned till höger och ge presetet ett namn (det blir aktivt).
+1. Tryck **+** ovanför setlistan och ge presetet ett namn (det blir aktivt).
 2. Ställ in effekterna. **Allt du ändrar sparas i det aktiva presetet** – en effekt du ändrar
    eller slår på tas automatiskt med (rutan visar PRESET). Grundljudet påverkas inte.
 3. Effekter du inte rör följer grundljudet. **I preset** av = ta bort effekten ur presetet.
 4. Vill du ändra grundljudet: välj **0 Grundljud** först.
 
-**Live:** tryck på ett presetpiller för att aktivera det och på **0 Grundljud** för att gå
+**Live:** tryck på en rad i setlistan för att aktivera det och på **0 Grundljud** för att gå
 tillbaka. (Med tangenter och fotswitch går samma knapp igen tillbaka till grundljudet.) Byten glider mjukt och reverbsvansen klingar ut. Högerklick/långt
-tryck på ett piller ger meny för att byta namn, duplicera, flytta och ta bort. Allt sparas
+tryck på en rad ger meny för att byta namn, duplicera, flytta och ta bort. Allt sparas
 automatiskt; **⋯ → Exportera/Importera presets** sparar en JSON-fil (backup, flytta till iPad).
 
 Appen startar med exempel – *Stor hall*, *Chorus* och *Flanger-svep* – att ändra eller ta bort.
@@ -254,9 +257,9 @@ känd tillagd efterklang (1 / 2,5 / 5 s gav 2,1 / 3,0 / 3,9 s i förslag).
    visar rundturslatensen (DAC + ADC + drivrutin + buffertar) i ms och samples.
    **Uppmätt (Mac + Scarlett 2i2, 48 kHz, buffert 64): 5,60 ms rundtur (269 samples).**
    Mycket bra för live – motsvarar att stå knappt 2 m från en förstärkare.
-4. Prova olika buffertstorlekar (Options → Audio/MIDI Settings) och anteckna resultaten.
+4. Prova olika buffertstorlekar (⋯ → Ljudinställningar) och anteckna resultaten.
    Effektlatensen (oversampling, för närvarande 28 samples) kommer ovanpå när
-   distortion är på och visas i statusraden.
+   distortion är på och visas i ⋯-menyn.
 
 "Ingen signal" betyder att klicket inte kom tillbaka (kabel, fel ingång, för låg gain).
 Stäng av Scarletts **Direct Monitor** (och Air) före mätningen. Med loopback-kabeln

@@ -8,17 +8,17 @@ juce::String S(const char* utf8) { return juce::String::fromUTF8(utf8); }
 }
 
 GuitarFXEditor::GuitarFXEditor(GuitarFXProcessor& p)
-    : AudioProcessorEditor(&p), processor_(p), stage_(p), grid_(p, [this](int i) { panel_.show(i); }), panel_(p), presets_(p), tuner_(p), analysisView_(p) {
+    : AudioProcessorEditor(&p), processor_(p), setlist_(p), meter_(p), grid_(p, [this](int i) { panel_.show(i); }), panel_(p), tuner_(p), analysisView_(p) {
     applyAppearance(true);
     setLookAndFeel(&lnf_);
     // Menyer, dialoger och popovers ritas i egna fönster – ge dem samma tema.
     juce::LookAndFeel::setDefaultLookAndFeel(&lnf_);
 
     header_.more.onClick = [this] { showMoreMenu(); };
-    presets_.analyse.onClick = [this] { setAnalysisOpen(!analysisView_.isOpen()); };
+    setlist_.analyse.onClick = [this] { setAnalysisOpen(!analysisView_.isOpen()); };
     analysisView_.onClose = [this] { setAnalysisOpen(false); };
 
-    for (juce::Component* c : std::initializer_list<juce::Component*> { &header_, &tuner_, &stage_, &grid_, &panel_, &presets_ })
+    for (juce::Component* c : std::initializer_list<juce::Component*> { &header_, &meter_, &tuner_, &setlist_, &grid_, &panel_ })
         addAndMakeVisible(c);
     addChildComponent(analysisView_);
 
@@ -65,10 +65,10 @@ juce::String GuitarFXEditor::latencyText(bool shortForm) const {
 
 void GuitarFXEditor::timerCallback() {
     auto& e = processor_.engine();
-    stage_.update(e.inputPeak(0), e.inputPeak(1), e.outputPeak(), latencyText(true));
+    meter_.update();
     grid_.refresh();
     panel_.refresh();
-    presets_.refresh();
+    setlist_.refresh();
 
     // Watchdog: har ljudmotorn levererat nya block sedan förra kollen?
     const auto blocks = e.processedBlocks();
@@ -83,7 +83,7 @@ void GuitarFXEditor::timerCallback() {
 void GuitarFXEditor::setAnalysisOpen(bool open) {
     analysisView_.setOpen(open);
     if (open) analysisView_.toFront(false);
-    presets_.analyse.setToggleState(open, juce::dontSendNotification);
+    setlist_.analyse.setToggleState(open, juce::dontSendNotification);
 }
 
 
@@ -107,19 +107,19 @@ void GuitarFXEditor::paintOverChildren(juce::Graphics& g) {
 void GuitarFXEditor::resized() {
     auto r = getLocalBounds().reduced(ui::size::page, 0);
     r.removeFromTop(24);
-    header_.setBounds(r.removeFromTop(56));
+    auto head = r.removeFromTop(56);
+    header_.setBounds(head);
+    meter_.setBounds(head.withTrimmedRight(48 + 24).removeFromRight(220));   // vänster om ⋯
     r.removeFromTop(24);
     r.removeFromBottom(20);
     tuner_.setBounds(r.removeFromBottom(60));      // stämapparaten längst ned
     r.removeFromBottom(28);                        // luft ovanför stämapparaten
-    presets_.setBounds(r.removeFromBottom(56));
-    r.removeFromBottom(28);
-    stage_.setBounds(r.removeFromLeft(juce::jlimit(340, 520, r.getWidth() * 34 / 100)));
-    r.removeFromLeft(40);
+    setlist_.setBounds(r.removeFromLeft(juce::jlimit(320, 440, r.getWidth() * 30 / 100)));
+    r.removeFromLeft(32);
     grid_.setBounds(r.removeFromTop(150));
     r.removeFromTop(20);
     panel_.setBounds(r);
-    analysisView_.setBounds(stage_.getBounds().getUnion(panel_.getBounds()).getUnion(grid_.getBounds()));
+    analysisView_.setBounds(setlist_.getBounds().getUnion(panel_.getBounds()).getUnion(grid_.getBounds()));
 }
 
 // Ta tangentbordsfokus när fönstret visas, så att 1–9/←/→ (och pedaler som
@@ -166,6 +166,18 @@ void GuitarFXEditor::showMoreMenu() {
     look.addItem(21, S("Ljust"), true, a == 1);
     look.addItem(22, S("Mörkt"), true, a == 2);
     m.addSubMenu(S("Utseende"), look);
+    {
+        const double cpu = processor_.cpuLoad() * 100.0;
+        const float gr = processor_.engine().limiterGainReductionDb();
+        juce::String status = S("CPU ") + juce::String(juce::roundToInt(cpu)) + S(" %  ·  Limiter ")
+                            + (gr < -0.05f ? juce::String(gr, 1).replaceCharacter('.', ',') + " dB" : S("vilar"));
+        const auto lat = latencyText(true);
+        if (lat.isNotEmpty()) status << S("  ·  Latens ") << lat;
+        const auto midi = processor_.lastMidiDescription();
+        if (midi.isNotEmpty()) status << S("  ·  MIDI ") << midi;
+        m.addSeparator();
+        m.addItem(40, status, false);
+    }
     juce::PopupMenu help;
     help.addItem(30, S("Tangenter: 1–9, 0/Esc, ←/→"), false);
     help.addItem(31, S("MIDI Program Change 0–8 = preset 1–9"), false);
