@@ -261,7 +261,7 @@ EffectPanel::EffectPanel(GuitarFXProcessor& proc) : proc_(proc) {
     switch_.onClick = [this] {
         if (index_ >= 0) proc_.engine().chain().setEnabled(proc_.rig().effects()[size_t(index_)].slot, switch_.getToggleState());
     };
-    presetPill_.setTooltip(S("Ta med effekten i det aktiva presetet. Av = effekten följer grundljudet."));
+    presetPill_.setTooltip(S("Ingår i det aktiva presetet. Stäng av för att effekten ska följa grundljudet igen."));
     presetPill_.onClick = [this] {
         if (index_ >= 0) proc_.rig().setIncludedInActive(proc_.rig().effects()[size_t(index_)].id, presetPill_.getToggleState());
     };
@@ -330,7 +330,7 @@ void EffectPanel::paint(juce::Graphics& g) {
     juce::String status;
     if (rig.activePreset() < 0) status = on ? S("På i grundljudet") : S("Av");
     else if (rig.activeIncludes(e.id)) status = S("Sparas i presetet ") + u8(rig.activeName()) + (on ? "" : S(" · av"));
-    else status = on ? S("På · följer grundljudet") : S("Av · följer grundljudet");
+    else status = on ? S("På · följer grundljudet – ändra för att spara i presetet") : S("Av · följer grundljudet – slå på eller ändra för att spara i presetet");
     if (e.id == "cabinet") status << S(" · ") << u8(proc_.cabinet().impulseResponseName());
     if (activity_ < -0.5f) status << S(" · ") << juce::String(juce::roundToInt(-activity_)) << S(" dB kompression");
     g.setColour(irStatus_.isNotEmpty() ? p.danger : p.secondaryInk);
@@ -492,10 +492,10 @@ void PresetBar::rebuild() {
         pill->prefix = juce::String(t + 1);
         pill->onClick = [this, t] {
             if (t >= 0 && isMenuGesture()) return;   // menyn öppnas i mouseUp
-            if (t < 0) proc_.rig().activate(-1); else proc_.rig().select(t);
+            proc_.rig().activate(t);   // klick = aktivera (Grundljud-pillret går tillbaka)
         };
         if (t >= 0) {
-            pill->setTooltip(S("Tryck = aktivera · högerklick = byt namn, flytta, ta bort"));
+            pill->setTooltip(S("Tryck = aktivera. Ändringar sparas i det aktiva presetet. Högerklick = byt namn, flytta, ta bort"));
             pill->addMouseListener(this, false);
             pill->getProperties().set("preset", t);
         }

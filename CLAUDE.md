@@ -15,6 +15,9 @@ Driftsäkerhet live är huvudkravet. Svara på svenska.
 - Parametrar: `gfx::Parameter` (atomic) + `SmoothedValue` på ljudtråden.
 - Presets: `gfx::Rig` (engine/Rig.h) – grundljud + presets (ett i taget). Används bara från
   meddelandetråden; processorns timer kör `syncFromLive()` och MIDI-kommandon (50 Hz).
+  Ändringar sparas i det som är aktivt (en ändrad effekt tas automatiskt med i aktivt
+  preset). Klick på presetpiller = aktivera; tangent/MIDI samma igen = grundljud.
+  Fristående appen autosparar state var 3:e sekund när något ändrats.
 - GUI: `app/Source/ui/` – monokromt formspråk (användarens inspiration: varm off-white,
   beige rutor, svarta runda rattar med ljus prick, stora fetstilta rubriker, tunna stora
   siffror; mörkt läge inverterar). Theme (palett, Inter-typsnitt, LookAndFeel inkl. ratt),

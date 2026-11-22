@@ -6,9 +6,10 @@
 //  - Ett preset innehåller ett läge för en eller flera effekter. När presetet är
 //    aktivt används dess läge för de effekterna; övriga effekter följer grundljudet.
 //  - Ett preset i taget. select(i) på det redan aktiva = tillbaka till grundljudet.
-//  - Redigering: GUI:t ändrar de levande parametrarna; syncFromLive() skriver
-//    tillbaka till rätt ställe – det aktiva presetet om det innehåller effekten,
-//    annars grundljudet.
+//  - Redigering: GUI:t ändrar de levande parametrarna; syncFromLive() sparar i det som
+//    är aktivt. Med ett preset aktivt tas en ändrad effekt automatiskt med i presetet
+//    (grundljudet rörs inte); med grundljudet aktivt sparas ändringen där.
+//    setIncludedInActive(id, false) tar bort en effekt ur presetet (följer grundljudet igen).
 //
 // Trådar: Rig används bara från meddelandetråden (GUI, MIDI-kö, state). Ljudtråden
 // ser bara gfx::Parameter (atomic) och EffectChain::setEnabled (atomic), så byten

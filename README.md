@@ -196,14 +196,14 @@ längst ned och ställ in EQ och de effekter som alltid ska vara på (t.ex. ett 
 - Ikonen med ljudvågen bredvid **+** längst ned öppnar låtanalysen.
 
 **Ett preset** är en eller flera effekter med egna inställningar:
-1. Tryck **+** längst ned till höger och ge presetet ett namn.
-2. Välj en effekt och tryck **I preset**. Effekten slås på och dina ändringar sparas nu i
-   presetet (rutan visar PRESET).
-3. Effekter utan I preset följer grundljudet. Ändrar du dem medan presetet är aktivt
-   ändras grundljudet.
+1. Tryck **+** längst ned till höger och ge presetet ett namn (det blir aktivt).
+2. Ställ in effekterna. **Allt du ändrar sparas i det aktiva presetet** – en effekt du ändrar
+   eller slår på tas automatiskt med (rutan visar PRESET). Grundljudet påverkas inte.
+3. Effekter du inte rör följer grundljudet. **I preset** av = ta bort effekten ur presetet.
+4. Vill du ändra grundljudet: välj **0 Grundljud** först.
 
-**Live:** tryck på ett presetpiller för att aktivera det, tryck igen (eller på Grundljud)
-för att gå tillbaka. Byten glider mjukt och reverbsvansen klingar ut. Högerklick/långt
+**Live:** tryck på ett presetpiller för att aktivera det och på **0 Grundljud** för att gå
+tillbaka. (Med tangenter och fotswitch går samma knapp igen tillbaka till grundljudet.) Byten glider mjukt och reverbsvansen klingar ut. Högerklick/långt
 tryck på ett piller ger meny för att byta namn, duplicera, flytta och ta bort. Allt sparas
 automatiskt; **⋯ → Exportera/Importera presets** sparar en JSON-fil (backup, flytta till iPad).
 
