@@ -23,7 +23,7 @@ jobs:
 
   mac:
     name: Stagebox.app och .dmg (macOS)
-    runs-on: macos-14
+    runs-on: macos-latest   # aktuell Mac-maskin hos GitHub (äldre versioner fasas ut)
     needs: tests
     if: github.event_name != 'pull_request'
     steps:
