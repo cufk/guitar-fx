@@ -22,30 +22,30 @@ else()
     set(GFX_FORMATS Standalone VST3)   # Linux / Raspberry Pi
 endif()
 
-juce_add_plugin(GuitarFX
+juce_add_plugin(Stagebox
     COMPANY_NAME                  "Flatmate"
-    BUNDLE_ID                     "se.flatmate.guitarfx"
+    BUNDLE_ID                     "se.flatmate.stagebox"
     PLUGIN_MANUFACTURER_CODE      Fltm
     PLUGIN_CODE                   Gtfx
-    PRODUCT_NAME                  "GuitarFX"
+    PRODUCT_NAME                  "Stagebox"
     FORMATS                       ${GFX_FORMATS}
     IS_SYNTH                      FALSE
     NEEDS_MIDI_INPUT              TRUE      # för fotswitch senare
     NEEDS_MIDI_OUTPUT             FALSE
     MICROPHONE_PERMISSION_ENABLED TRUE
-    MICROPHONE_PERMISSION_TEXT    "GuitarFX behöver ljudingången för att ta emot gitarrsignalen."
+    MICROPHONE_PERMISSION_TEXT    "Stagebox behöver ljudingången för att ta emot gitarrsignalen."
     BACKGROUND_AUDIO_ENABLED      TRUE      # iOS: fortsätt spela om skärmen släcks
     REQUIRES_FULL_SCREEN          TRUE
     COPY_PLUGIN_AFTER_BUILD       FALSE)
 
 # Typsnitt (Inter, SIL Open Font License – se Resources/fonts/Inter-LICENSE.txt).
-juce_add_binary_data(GuitarFXFonts SOURCES
+juce_add_binary_data(StageboxFonts SOURCES
     Resources/fonts/Inter-Light.ttf
     Resources/fonts/Inter-Regular.ttf
     Resources/fonts/Inter-SemiBold.ttf
     Resources/fonts/Inter-Bold.ttf)
 
-target_sources(GuitarFX PRIVATE
+target_sources(Stagebox PRIVATE
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
     Source/StandaloneApp.cpp
@@ -53,17 +53,17 @@ target_sources(GuitarFX PRIVATE
     Source/ui/Theme.cpp
     Source/ui/Widgets.cpp)
 
-target_compile_definitions(GuitarFX PUBLIC
+target_compile_definitions(Stagebox PUBLIC
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
     JUCE_VST3_CAN_REPLACE_VST2=0
     JUCE_DISPLAY_SPLASH_SCREEN=0
     JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1)   # eget appfönster, se StandaloneApp.cpp
 
-target_link_libraries(GuitarFX
+target_link_libraries(Stagebox
     PRIVATE
         gfx_core
-        GuitarFXFonts
+        StageboxFonts
         juce::juce_audio_utils
         juce::juce_audio_processors
         juce::juce_dsp

@@ -1,10 +1,12 @@
-# GuitarFX
+# Stagebox
+
+(Tidigare *GuitarFX*. Repot på GitHub heter fortfarande `guitar-fx`.)
 
 Egen gitarreffektprocessor: chorus, flanger, reverb och distortion. Utvecklas på Mac
 med Focusrite Scarlett och är byggd för att flyttas till iPad (live) och eventuellt
 Raspberry Pi eller egen pedal.
 
-## Status (v0.9 – stämapparat alltid synlig, låtanalys)
+## Status (v0.9 – Stagebox: stämfält längst ned, stämningar, låtanalys)
 
 - Portabel DSP-kärna och ljudmotor utan beroenden (`dsp/`, `engine/`)
 - **Ingångssteg för akustisk gitarr:** Ingång 1, Ingång 2 eller **Blanda 1 + 2**
@@ -20,10 +22,10 @@ Raspberry Pi eller egen pedal.
 - **EQ:** lågskärning, bas, mitt (valbar frekvens), diskant och smal notch mot rundgång.
 - **Låtanalys → preset:** välj en låt (WAV/AIFF/FLAC/MP3/M4A). Appen analyserar klang,
   rum, bredd, dynamik och tempo lokalt och föreslår ett preset med låtens namn.
-- **Stämapparat alltid synlig:** ett vågrätt fält under rubriken visar ton, skala −50…+50
-  cent, avvikelse och närmaste sträng (E A D G B E) hela tiden. **Tysta ut** (eller T /
-  MIDI CC 105) stänger av ljudet ut medan du stämmer – då blir fältet svart så att det syns
-  på håll. Referens A4 430–446 Hz. Noggrannhet < 1 cent i hela gitarrens register.
+- **Stämapparat alltid synlig:** ett lågt fält längst ned visar ton, skala −50…+50 cent,
+  avvikelse och strängarna i vald stämning (Standard, Drop D, halvton/helton ner, Drop C,
+  DADGAD, Open G/D/E/C eller Kromatisk). **Mute** (eller T / MIDI CC 105) stänger av ljudet
+  ut medan du stämmer – då blir fältet svart. Referens A4 430–446 Hz. Noggrannhet < 1 cent.
 - **Sustain:** kompressor för längre ton – sustain, anslag, släpp, nivå och mix
   (parallellkompression som behåller anslaget). Visar hur mycket den komprimerar.
 - **Widener:** bredare stereo med mitt/sida-teknik – exakt monokompatibel (L+R = originalet).
@@ -79,7 +81,7 @@ JUCE 9.0.6 hämtas automatiskt vid första konfigureringen.
 ```bash
 # Xcode-projekt (rekommenderas för att köra/debugga appen)
 cmake -B build -G Xcode
-open build/GuitarFX.xcodeproj      # välj schemat "GuitarFX_Standalone" och kör
+open build/Stagebox.xcodeproj      # välj schemat "Stagebox_Standalone" och kör
 
 # Eller kommandoraden
 cmake -B build -DCMAKE_BUILD_TYPE=Release
@@ -87,11 +89,11 @@ cmake --build build --config Release -j
 ctest --test-dir build -C Release --output-on-failure
 ```
 
-Appen hamnar i `build/app/GuitarFX_artefacts/<Config>/Standalone/GuitarFX.app`.
+Appen hamnar i `build/app/Stagebox_artefacts/<Config>/Standalone/Stagebox.app`.
 
 ### Första körningen med Scarlett
 
-Utgångarna på baksidan heter **Left** och **Right** (= utgång 1 och 2). GuitarFX skickar
+Utgångarna på baksidan heter **Left** och **Right** (= utgång 1 och 2). Stagebox skickar
 samma signal på båda; använd **Left** till mixer/PA. Hörlurar i Scarlettens hörlursuttag.
 Ingång och utgång måste vara **samma ljudenhet** (Scarlett), annars ökar latensen kraftigt.
 
@@ -106,7 +108,7 @@ Ingång och utgång måste vara **samma ljudenhet** (Scarlett), annars ökar lat
 
 ```bash
 cmake -B build-ios -G Xcode -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_DEPLOYMENT_TARGET=16.0
-open build-ios/GuitarFX.xcodeproj
+open build-ios/Stagebox.xcodeproj
 ```
 
 Sätt ditt Team under Signing i Xcode. Använd ett betalt utvecklarkonto – byggen med
@@ -194,7 +196,7 @@ Appen startar med exempel – *Stor hall*, *Chorus* och *Flanger-svep* – att �
 | **←** / **→** (även Page Up/Down) | Föregående / nästa |
 | MIDI **Program Change 0–8** | Preset 1–9 |
 | MIDI **CC 102 / 103 / 104** (värde ≥ 64) | Föregående / nästa / grundljud |
-| Tangent **T** eller MIDI **CC 105** | Tysta ut (stämning) på/av |
+| Tangent **T** eller MIDI **CC 105** | Mute (stämning) på/av |
 
 MIDI-ingångar (även Bluetooth-MIDI-pedaler som parats i macOS *Ljud-MIDI-inställningar*)
 öppnas automatiskt. Ljudkort och MIDI väljs under **⋯ → Ljudinställningar…**. Pedaler som i stället

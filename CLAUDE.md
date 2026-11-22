@@ -1,6 +1,7 @@
-# CLAUDE.md – GuitarFX
+# CLAUDE.md – Stagebox
 
-Egen gitarreffektprocessor. **Primärt fokus nu: akustisk gitarr** (mikrofon och/eller
+**Stagebox** (tidigare GuitarFX; repot heter `guitar-fx`, kodens klasser heter fortfarande
+`GuitarFXProcessor` m.fl. och namnrymden `gfx`). Egen gitarreffektprocessor. **Primärt fokus nu: akustisk gitarr** (mikrofon och/eller
 inbyggd mikrofon, Scarlett 2i2 in 1 + 2) → mixer/PA. Distortion/kabinett finns för
 elgitarr men är avstängda som standard. Utvecklas på Mac; mål för live är iPad,
 eventuellt Raspberry Pi senare.
@@ -20,9 +21,9 @@ Driftsäkerhet live är huvudkravet. Svara på svenska.
   Icons (vektorikoner per effekt), Widgets (HeaderBar, StageView, EffectGrid, EffectPanel,
   KnobTile, PresetBar, InputPanel, TunerStrip, AnalysisView). Ingen färg utom rött för varningar.
   Rattar och effektrutor följer ett fast rutnät med fyra kolumner (`kGridColumns`).
-- Stämapparat: alltid synligt fält (`TunerStrip`) under rubriken. `engine/TunerTap.h`
-  (ljudtråden kopierar torr ingång till ringbuffert; "Tysta ut" gäller bara medan GUI:t är
-  öppet) + `dsp/core/PitchDetector.h` (YIN, körs på GUI-tråden).
+- Stämapparat: lågt fält längst ned (`TunerStrip`), stämningar i `ui::tunings()`, valet och
+  A4 sparas i processorns state. `engine/TunerTap.h` (ljudtråden kopierar torr ingång till
+  ringbuffert; "Mute" gäller bara medan GUI:t är öppet) + `dsp/core/PitchDetector.h` (YIN).
 - Låtanalys: `engine/SongAnalyzer` (ren signalanalys: klang, rum, bredd, dynamik, tempo) körs
   i egen tråd från `AnalysisView`; `GuitarFXProcessor::createPresetFromAnalysis` gör preset.
   Användaren valde signalanalys (inte Demucs/AI-separering) – Demucs kan bli ett Mac-tillval.
@@ -30,6 +31,7 @@ Driftsäkerhet live är huvudkravet. Svara på svenska.
   sparning kommer automatiskt.
 - Fristående app: eget fönster i `app/Source/StandaloneApp.cpp`
   (JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP) – inbyggd titelrad, ljudinställningar via ⋯-menyn.
+  Inställningar i `Stagebox.settings` (kopieras från `GuitarFX.settings` första gången).
 
 ## Regler
 - process()/reset(): ingen allokering, inga lås, ingen loggning, ingen I/O.
@@ -46,6 +48,7 @@ Driftsäkerhet live är huvudkravet. Svara på svenska.
 - Tester: `ctest --test-dir build -C Release --output-on-failure`
 - Bara kärnan (snabbt): `cmake -B build-core -DGFX_BUILD_APP=OFF && cmake --build build-core`
 - Offline: `build/tools/offline-render/gfx-render in.wav ut.wav`
+- Appen: `build/app/Stagebox_artefacts/Release/Standalone/Stagebox.app`
 
 ## Nästa steg
 Se "Färdplan" i README.md. Klart: akustisk ingång, EQ med notch, sustain (kompressor),

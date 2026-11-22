@@ -734,29 +734,58 @@ void InputPanel::resized() {
 // ---------------------------------------------------------------------------
 // TunerStrip
 // ---------------------------------------------------------------------------
-namespace {
-// Standardstämning, låga E till höga E (MIDI-nummer).
-constexpr int kStrings[6] = { 40, 45, 50, 55, 59, 64 };
-const char* kStringNames[6] = { "E", "A", "D", "G", "B", "E" };
+const std::vector<Tuning>& tunings() {
+    static const std::vector<Tuning> t {
+        { "Standard",          { 40, 45, 50, 55, 59, 64 } },   // E A D G B E
+        { "Drop D",            { 38, 45, 50, 55, 59, 64 } },   // D A D G B E
+        { "Halvton ner",       { 39, 44, 49, 54, 58, 63 } },   // D# G# C# F# A# D#
+        { "Helton ner",        { 38, 43, 48, 53, 57, 62 } },   // D G C F A D
+        { "Drop C",            { 36, 43, 48, 53, 57, 62 } },   // C G C F A D
+        { "DADGAD",            { 38, 45, 50, 55, 57, 62 } },
+        { "Open G",            { 38, 43, 50, 55, 59, 62 } },   // D G D G B D
+        { "Open D",            { 38, 45, 50, 54, 57, 62 } },   // D A D F# A D
+        { "Open E",            { 40, 47, 52, 56, 59, 64 } },   // E B E G# B E
+        { "Open C",            { 36, 43, 48, 55, 60, 64 } },   // C G C G C E
+        { "Kromatisk",         {} },                           // bara närmaste ton
+    };
+    return t;
 }
 
 TunerStrip::TunerStrip(GuitarFXProcessor& proc) : proc_(proc) {
     mute_.setTooltip(S("Tysta utgången medan du stämmer (T / MIDI CC 105)"));
+    tuning_.setTooltip(S("Stämning"));
+    tuning_.onClick = [this] {
+        juce::PopupMenu m;
+        m.addSectionHeader(S("Stämning"));
+        const auto& list = tunings();
+        for (size_t i = 0; i < list.size(); ++i) {
+            juce::String label = S(list[i].name);
+            if (!list[i].strings.empty()) {
+                juce::StringArray notes;
+                for (int midi : list[i].strings) notes.add(gfx::noteFromHz(gfx::hzFromMidi(midi)).name);
+                label << "   " << notes.joinIntoString(" ");
+            }
+            m.addItem(static_cast<int>(i) + 1, label, true, proc_.tuning.load() == static_cast<int>(i));
+        }
+        juce::Component::SafePointer<TunerStrip> safe(this);
+        m.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&tuning_), [safe](int r) {
+            if (safe && r > 0) safe->proc_.tuning.store(r - 1);
+        });
+    };
     mute_.onClick = [this] { proc_.engine().tuner().muteOutput.store(mute_.getToggleState()); repaint(); };
     reference_.setTooltip(S("Referenston för A4"));
     reference_.onClick = [this] {
         juce::PopupMenu m;
         m.addSectionHeader(S("Referens A4"));
         for (int f = 430; f <= 446; f += (f < 438 || f >= 442) ? 2 : 1)
-            m.addItem(f, juce::String(f) + " Hz", true, juce::roundToInt(referenceA4_) == f);
+            m.addItem(f, juce::String(f) + " Hz", true, juce::roundToInt(proc_.referenceA4.load()) == f);
         juce::Component::SafePointer<TunerStrip> safe(this);
         m.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&reference_), [safe](int r) {
-            if (!safe || r <= 0) return;
-            safe->referenceA4_ = static_cast<float>(r);
-            safe->reference_.setButtonText(juce::String(r) + " Hz");
+            if (safe && r > 0) safe->proc_.referenceA4.store(static_cast<float>(r));
         });
     };
     addAndMakeVisible(mute_);
+    addAndMakeVisible(tuning_);
     addAndMakeVisible(reference_);
     proc_.engine().tuner().active.store(true);   // lyssnar så länge fönstret är öppet
     startTimerHz(25);
@@ -784,13 +813,19 @@ void TunerStrip::timerCallback() {
     mute_.setToggleState(muted, juce::dontSendNotification);
     // Pillren ska synas mot fältets bakgrund i båda lägena (tystad = svart fält).
     const auto& p = palette();
-    for (auto* pill : { &mute_, &reference_ }) {
+    for (auto* pill : { &mute_, &tuning_, &reference_ }) {
         pill->offFill = muted ? p.inkInverse.withAlpha(0.14f) : p.background;
         pill->offText = muted ? p.inkInverse : p.ink;
         pill->onFill  = muted ? p.inkInverse : p.ink;
         pill->onText  = muted ? p.ink : p.inkInverse;
     }
-    mute_.setButtonText(muted ? S("Tystad") : S("Tysta ut"));
+    mute_.setButtonText(muted ? S("Muted") : S("Mute"));
+    const auto& list = tunings();
+    const auto& tuning = list[size_t(juce::jlimit(0, static_cast<int>(list.size()) - 1, proc_.tuning.load()))];
+    if (tuning_.getButtonText() != S(tuning.name)) { tuning_.setButtonText(S(tuning.name)); resized(); }
+    const float referenceA4 = proc_.referenceA4.load();
+    const auto refText = juce::String(juce::roundToInt(referenceA4)) + " Hz";
+    if (reference_.getButtonText() != refText) reference_.setButtonText(refText);
 
     tap.latest(window_.data(), static_cast<int>(window_.size()));
     const auto r = detector_.detect(window_.data(), static_cast<int>(window_.size()));
@@ -801,7 +836,7 @@ void TunerStrip::timerCallback() {
         auto sorted = recent_;
         std::sort(sorted.begin(), sorted.end());
         const float hz = sorted[sorted.size() / 2];
-        const auto n = gfx::noteFromHz(hz, referenceA4_);
+        const auto n = gfx::noteFromHz(hz, referenceA4);
         if (n.midi != midi_) shownCents_ = n.cents;   // ny ton: hoppa direkt
         hz_ = hz;
         midi_ = n.midi;
@@ -816,9 +851,9 @@ void TunerStrip::timerCallback() {
     nearest_ = -1;
     if (hz_ > 0.0f) {
         int bestDist = 1000;
-        for (int i = 0; i < 6; ++i) {
-            const int dist = std::abs(midi_ - kStrings[i]);
-            if (dist < bestDist) { bestDist = dist; nearest_ = i; }
+        for (size_t i = 0; i < tuning.strings.size(); ++i) {
+            const int dist = std::abs(midi_ - tuning.strings[i]);
+            if (dist < bestDist) { bestDist = dist; nearest_ = static_cast<int>(i); }
         }
         if (bestDist > 2) nearest_ = -1;
     }
@@ -833,11 +868,13 @@ void TunerStrip::paint(juce::Graphics& g) {
     const auto ink = muted ? p.inkInverse : p.ink;
     const auto dim = muted ? p.inkInverse.withAlpha(0.55f) : p.secondaryInk;
     const auto faint = muted ? p.inkInverse.withAlpha(0.25f) : p.line;
-    drawTile(g, getLocalBounds().toFloat(), 20.0f, bg);
+    drawTile(g, getLocalBounds().toFloat(), 16.0f, bg);
 
     const bool hasNote = hz_ > 0.0f;
     const bool inTune = hasNote && std::abs(cents_) < 3.0f;
-    const auto n = gfx::noteFromHz(hz_, referenceA4_);
+    const auto n = gfx::noteFromHz(hz_, proc_.referenceA4.load());
+    const auto& list = tunings();
+    const auto& tuning = list[size_t(juce::jlimit(0, static_cast<int>(list.size()) - 1, proc_.tuning.load()))];
 
     // Ton.
     const float noteH = static_cast<float>(noteArea_.getHeight());
@@ -872,7 +909,7 @@ void TunerStrip::paint(juce::Graphics& g) {
 
     // Cent och Hz (eller status).
     juce::String info, sub;
-    if (!hasNote) { info = muted ? S("Utgång tystad") : S("Stämapparat"); sub = muted ? S("Spela en sträng") : S("Spela en sträng för att stämma"); }
+    if (!hasNote) { info = muted ? S("Utgång tystad") : S("Stämapparat"); sub = S("Spela en sträng"); }
     else if (inTune) { info = S("Stämd"); sub = juce::String(hz_, 1).replaceCharacter('.', ',') + " Hz"; }
     else {
         info = minusSign((cents_ > 0 ? "+" : "") + juce::String(juce::roundToInt(cents_))) + S(" cent");
@@ -880,38 +917,50 @@ void TunerStrip::paint(juce::Graphics& g) {
     }
     auto ia = infoArea_;
     g.setColour(ink);
-    g.setFont(font(18.0f, Weight::SemiBold));
-    g.drawText(info, ia.removeFromTop(ia.getHeight() / 2 + 2), juce::Justification::bottomLeft, true);
+    g.setFont(font(15.0f, Weight::SemiBold));
+    g.drawText(info, ia.removeFromTop(ia.getHeight() / 2 + 1), juce::Justification::bottomLeft, true);
     g.setColour(dim);
-    g.setFont(font(13.0f));
-    g.drawText(sub, ia.withTrimmedTop(2), juce::Justification::topLeft, true);
+    g.setFont(font(12.0f));
+    g.drawText(sub, ia.withTrimmedTop(1), juce::Justification::topLeft, true);
 
-    // Strängar: närmaste markeras med en fylld cirkel.
+    // Strängar i vald stämning: närmaste markeras med en fylld cirkel.
+    const int ns = static_cast<int>(tuning.strings.size());
     auto st = stringsArea_.toFloat();
-    const float cw = st.getWidth() / 6.0f;
-    for (int i = 0; i < 6; ++i) {
-        auto c = juce::Rectangle<float>(st.getX() + cw * i, st.getY(), cw, st.getHeight()).withSizeKeepingCentre(30.0f, 30.0f);
+    if (ns == 0) {
+        g.setColour(dim);
+        g.setFont(font(12.5f));
+        g.drawText(S("Kromatisk"), st, juce::Justification::centred, false);
+    }
+    const float cw = ns > 0 ? st.getWidth() / static_cast<float>(ns) : 0.0f;
+    for (int i = 0; i < ns; ++i) {
+        const auto name = juce::String(gfx::noteFromHz(gfx::hzFromMidi(tuning.strings[size_t(i)])).name);
+        auto c = juce::Rectangle<float>(st.getX() + cw * i, st.getY(), cw, st.getHeight())
+                     .withSizeKeepingCentre(name.length() > 1 ? 32.0f : 26.0f, 26.0f);
         const bool sel = i == nearest_;
-        if (sel) { g.setColour(ink); g.fillEllipse(c); }
+        if (sel) { g.setColour(ink); g.fillRoundedRectangle(c, 13.0f); }
         g.setColour(sel ? bg : dim);
-        g.setFont(font(14.0f, sel ? Weight::Bold : Weight::SemiBold));
-        g.drawText(kStringNames[i], c, juce::Justification::centred, false);
+        g.setFont(font(12.5f, sel ? Weight::Bold : Weight::SemiBold));
+        g.drawText(name, c, juce::Justification::centred, false);
     }
 }
 
 void TunerStrip::resized() {
-    auto r = getLocalBounds().reduced(24, 0);
-    mute_.setBounds(r.removeFromRight(118).withSizeKeepingCentre(118, 44));
+    auto r = getLocalBounds().reduced(18, 0);
+    const int pillH = juce::jmin(36, getHeight() - 16);
+    mute_.setBounds(r.removeFromRight(92).withSizeKeepingCentre(92, pillH));
     r.removeFromRight(8);
-    reference_.setBounds(r.removeFromRight(92).withSizeKeepingCentre(92, 44));
+    reference_.setBounds(r.removeFromRight(86).withSizeKeepingCentre(86, pillH));
+    r.removeFromRight(8);
+    const int tw = juce::jmax(110, static_cast<int>(textWidth(font(13.5f, Weight::SemiBold), tuning_.getButtonText())) + 36);
+    tuning_.setBounds(r.removeFromRight(tw).withSizeKeepingCentre(tw, pillH));
+    r.removeFromRight(18);
+    stringsArea_ = r.removeFromRight(juce::jmin(220, r.getWidth() / 5)).withSizeKeepingCentre(juce::jmin(220, r.getWidth() / 5), 28);
     r.removeFromRight(20);
-    stringsArea_ = r.removeFromRight(juce::jmin(240, r.getWidth() / 5)).withSizeKeepingCentre(juce::jmin(240, r.getWidth() / 5), 32);
-    r.removeFromRight(24);
-    noteArea_ = r.removeFromLeft(86).reduced(0, 10);
-    r.removeFromLeft(12);
-    infoArea_ = r.removeFromLeft(170).reduced(0, 14);
-    r.removeFromLeft(24);
-    scaleArea_ = r.withSizeKeepingCentre(r.getWidth(), juce::jmin(46, r.getHeight() - 24));
+    noteArea_ = r.removeFromLeft(58).reduced(0, 8);
+    r.removeFromLeft(8);
+    infoArea_ = r.removeFromLeft(150).reduced(0, 10);
+    r.removeFromLeft(18);
+    scaleArea_ = r.withSizeKeepingCentre(r.getWidth(), juce::jmin(32, r.getHeight() - 20));
 }
 
 // ---------------------------------------------------------------------------
@@ -1120,24 +1169,19 @@ HeaderBar::HeaderBar() {
     addAndMakeVisible(more);
 }
 
-void HeaderBar::setTexts(const juce::String& subtitle, const juce::String& sourceText) {
-    if (subtitle != subtitle_) { subtitle_ = subtitle; repaint(); }
+void HeaderBar::setSourceText(const juce::String& sourceText) {
     if (input.getButtonText() != sourceText) input.setButtonText(sourceText);
 }
 
 void HeaderBar::paint(juce::Graphics& g) {
     const auto& p = palette();
-    auto r = getLocalBounds();
     g.setColour(p.ink);
     g.setFont(font(40.0f, Weight::Bold).withExtraKerningFactor(-0.02f));
-    g.drawText("GuitarFX", r.removeFromTop(52), juce::Justification::bottomLeft, false);
-    g.setColour(p.secondaryInk);
-    g.setFont(font(16.0f));
-    g.drawText(subtitle_, r.withTrimmedTop(2), juce::Justification::topLeft, true);
+    g.drawText("Stagebox", getLocalBounds(), juce::Justification::centredLeft, false);
 }
 
 void HeaderBar::resized() {
-    auto r = getLocalBounds().removeFromTop(56);
+    auto r = getLocalBounds();
     more.setBounds(r.removeFromRight(48).withSizeKeepingCentre(48, 48));
     r.removeFromRight(10);
     input.setBounds(r.removeFromRight(178).withSizeKeepingCentre(178, 48));
