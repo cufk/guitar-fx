@@ -1,0 +1,38 @@
+# Bygger och testar Stagebox. På main (och vid taggar v*) byggs även Stagebox.app och en
+# .dmg på en Mac, som laddas upp som artefakt (Actions → körningen → Artifacts).
+name: Bygg
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  tests:
+    name: Tester (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bygg kärnan och kör tester
+        run: |
+          cmake -B build-core -DGFX_BUILD_APP=OFF -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-core -j
+          ctest --test-dir build-core --output-on-failure
+
+  mac:
+    name: Stagebox.app och .dmg (macOS)
+    runs-on: macos-14
+    needs: tests
+    if: github.event_name != 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bygg, testa och paketera
+        run: ./scripts/build-mac.sh
+      - name: Ladda upp .dmg
+        uses: actions/upload-artifact@v4
+        with:
+          name: Stagebox-dmg
+          path: dist/*.dmg
+          if-no-files-found: error
