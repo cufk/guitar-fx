@@ -191,7 +191,8 @@ void KnobTile::resized() {
         auto col = r.withSizeKeepingCentre(r.getWidth(), static_cast<int>(choices_.size()) * (h + 8) - 8);
         for (auto& c : choices_) { c->setBounds(col.removeFromTop(h)); col.removeFromTop(8); }
     } else {
-        const int d = juce::jmin(r.getWidth(), r.getHeight());
+        // Ratten lite mindre än rutan – luft runt omkring.
+        const int d = juce::roundToInt(static_cast<float>(juce::jmin(r.getWidth(), r.getHeight())) * 0.8f);
         knob_.setBounds(r.withSizeKeepingCentre(d, d));
     }
 }
@@ -356,197 +357,208 @@ void EffectPanel::resized() {
 
     const int n = static_cast<int>(tiles_.size());
     if (n == 0) return;
-    // Fast rutnät med fyra kolumner (samma som effektrutorna ovanför): två rattar tar
-    // två kolumner och resten lämnas tomt – rutorna sträcks aldrig ut.
-    constexpr int cols = kGridColumns;
-    const int rows = (n + cols - 1) / cols;
+    // Fast rutnät med fyra kolumner (samma som effektrutorna ovanför). Rutorna har alltid
+    // samma bredd OCH höjd, oavsett effekt: höjden räknas för två rader (flest reglage = 7),
+    // så att en effekt med tre reglage får exakt lika stora rutor som EQ.
+    constexpr int cols = kGridColumns, maxRows = 2;
     const int gap = kGridGap;
     const int w = (r.getWidth() - gap * (cols - 1)) / cols;
-    const int h = juce::jmin((r.getHeight() - gap * (rows - 1)) / rows, w + 40);
+    const int h = juce::jmin(juce::roundToInt(static_cast<float>(w) * 0.95f), (r.getHeight() - gap * (maxRows - 1)) / maxRows);
     for (int i = 0; i < n; ++i)
         tiles_[size_t(i)]->setBounds(r.getX() + (i % cols) * (w + gap), r.getY() + (i / cols) * (h + gap), w, h);
 }
 
 // ---------------------------------------------------------------------------
-// StageView
+// SetlistPanel
 // ---------------------------------------------------------------------------
-StageView::StageView(GuitarFXProcessor& proc) : proc_(proc) {
-    prev_.onClick = [this] { proc_.rig().selectPrevious(); };
-    next_.onClick = [this] { proc_.rig().selectNext(); };
-    addAndMakeVisible(prev_);
-    addAndMakeVisible(next_);
-}
-
-void StageView::update(float in1, float in2, float out, const juce::String& latency) {
-    const float v[3] = { in1, in2, out };
-    for (int i = 0; i < 3; ++i) level_[i] = juce::jmax(v[i], level_[i] * 0.88f);
-    const float target = levelNorm(out);
-    ring_ += (target - ring_) * (target > ring_ ? 0.6f : 0.12f);
-    if (target >= hold_) { hold_ = target; holdTicks_ = 40; }
-    else if (--holdTicks_ <= 0) hold_ = juce::jmax(0.0f, hold_ - 0.01f);
-    latency_ = latency;
-    repaint();
-}
-
-void StageView::paint(juce::Graphics& g) {
-    const auto& p = palette();
-    auto& rig = proc_.rig();
-    const int a = rig.activePreset();
-
-    // Ring av streck: tända streck = utnivå (−60..0 dB), ett längre streck = topphållning.
-    constexpr int kTicks = 72;
-    const auto c = ringArea_.getCentre();
-    const float outer = ringArea_.getWidth() * 0.5f;
-    const int lit = juce::roundToInt(ring_ * kTicks);
-    const int holdTick = juce::roundToInt(hold_ * kTicks);
-    for (int i = 0; i < kTicks; ++i) {
-        const float ang = juce::MathConstants<float>::twoPi * (static_cast<float>(i) / kTicks) + juce::MathConstants<float>::pi; // start nertill
-        const bool on = i < lit;
-        const bool peak = i == holdTick - 1 && holdTick > 1;
-        const float len = on || peak ? outer * 0.16f : outer * 0.10f;
-        const float r0 = outer - len, r1 = outer;
-        juce::Line<float> line(c.x + r0 * std::sin(ang), c.y - r0 * std::cos(ang), c.x + r1 * std::sin(ang), c.y - r1 * std::cos(ang));
-        g.setColour(on || peak ? (levelNorm(level_[2]) > 0.985f && on ? p.danger : p.ink) : p.line);
-        g.drawLine(line, on || peak ? 3.0f : 1.4f);
-    }
-
-    // Stort nummer i mitten.
-    const auto num = juce::String(a + 1);
-    g.setColour(p.ink);
-    g.setFont(font(outer * 0.78f, Weight::Light));
-    g.drawText(num, ringArea_.withSizeKeepingCentre(outer * 1.4f, outer).translated(0, -outer * 0.06f), juce::Justification::centred, false);
-    g.setColour(p.secondaryInk);
-    g.setFont(captionFont());
-    g.drawText(a < 0 ? S("GRUNDLJUD") : S("PRESET ") + juce::String(a + 1) + S(" AV ") + juce::String(rig.presets().size()),
-               ringArea_.withSizeKeepingCentre(outer, 20.0f).translated(0, outer * 0.42f), juce::Justification::centred, false);
-
-    // Namn under ringen.
-    g.setColour(p.ink);
-    g.setFont(font(26.0f, Weight::SemiBold));
-    g.drawText(a < 0 ? S("Grundljud") : u8(rig.activeName()), nameArea_, juce::Justification::centred, true);
-
-    // Ingångsmätare och status.
-    auto m = metersArea_;
-    const char* labels[2] = { "In 1", "In 2" };
-    for (int i = 0; i < 2; ++i) {
-        auto row = m.removeFromTop(m.getHeight() / (2 - i));
-        drawCaption(g, labels[i], row.removeFromLeft(40), p.secondaryInk);
-        auto bar = row.withSizeKeepingCentre(row.getWidth(), 4).toFloat();
-        g.setColour(p.line);
-        g.fillRoundedRectangle(bar, 2.0f);
-        const float n = levelNorm(level_[i]);
-        if (n > 0.0f) {
-            g.setColour(n > 0.985f ? p.danger : p.ink);
-            g.fillRoundedRectangle(bar.withWidth(juce::jmax(4.0f, bar.getWidth() * n)), 2.0f);
-        }
-    }
-    const double cpu = proc_.cpuLoad() * 100.0;
-    const float gr = proc_.engine().limiterGainReductionDb();
-    juce::String status = S("CPU ") + juce::String(juce::roundToInt(cpu)) + S(" %   ·   Limiter ")
-                        + (gr < -0.05f ? minusSign(juce::String(gr, 1).replaceCharacter('.', ',')) + " dB" : S("vilar"));
-    if (latency_.isNotEmpty()) status << S("   ·   Latens ") << latency_;
-    const auto midi = proc_.lastMidiDescription();
-    if (midi.isNotEmpty()) status << S("   ·   MIDI ") << midi;
-    g.setColour(cpu > 70 ? p.danger : p.tertiaryInk);
-    g.setFont(font(12.5f));
-    g.drawText(status, statusArea_, juce::Justification::centredLeft, true);
-}
-
-void StageView::resized() {
-    auto r = getLocalBounds();
-    statusArea_ = r.removeFromBottom(22);
-    r.removeFromBottom(10);
-    metersArea_ = r.removeFromBottom(40);
-    r.removeFromBottom(28);
-    auto nav = r.removeFromBottom(52);
-    r.removeFromBottom(20);
-    const float d = static_cast<float>(juce::jmin(r.getWidth() - 40, r.getHeight()));
-    ringArea_ = r.toFloat().withSizeKeepingCentre(d, d);
-    auto navC = nav.withSizeKeepingCentre(juce::jmin(nav.getWidth(), 380), 52);
-    prev_.setBounds(navC.removeFromLeft(52));
-    next_.setBounds(navC.removeFromRight(52));
-    nameArea_ = navC.reduced(10, 0);
-}
-
-// ---------------------------------------------------------------------------
-// PresetBar
-// ---------------------------------------------------------------------------
-PresetBar::PresetBar(GuitarFXProcessor& proc) : proc_(proc) {
+SetlistPanel::SetlistPanel(GuitarFXProcessor& proc) : proc_(proc) {
     add_.onClick = [this] {
         auto& rig = proc_.rig();
         const int i = rig.addPreset("Preset " + std::to_string(rig.presets().size() + 1));
         rig.activate(i);
         rename(i);
     };
-    addAndMakeVisible(add_);
-    addAndMakeVisible(analyse);
+    prev_.onClick = [this] { proc_.rig().selectPrevious(); };
+    next_.onClick = [this] { proc_.rig().selectNext(); };
+    prev_.setTooltip(S("Föregående i setlistan (← / fotswitch CC 102)"));
+    next_.setTooltip(S("Nästa i setlistan (→ / fotswitch CC 103)"));
+    for (juce::Component* c : std::initializer_list<juce::Component*> { &add_, &analyse, &prev_, &next_ }) addAndMakeVisible(c);
     refresh();
 }
 
-void PresetBar::rebuild() {
+void SetlistPanel::refresh() {
     auto& rig = proc_.rig();
-    pills_.clear();
-    const int n = static_cast<int>(rig.presets().size());
-    for (int t = -1; t < n; ++t) {
-        auto pill = std::make_unique<Pill>(t < 0 ? S("Grundljud") : u8(rig.presets()[size_t(t)].name), false);
-        pill->prefix = juce::String(t + 1);
-        pill->onClick = [this, t] {
-            if (t >= 0 && isMenuGesture()) return;   // menyn öppnas i mouseUp
-            proc_.rig().activate(t);   // klick = aktivera (Grundljud-pillret går tillbaka)
-        };
-        if (t >= 0) {
-            pill->setTooltip(S("Tryck = aktivera. Ändringar sparas i det aktiva presetet. Högerklick = byt namn, flytta, ta bort"));
-            pill->addMouseListener(this, false);
-            pill->getProperties().set("preset", t);
+    if (rig.activePreset() != lastActive_) { lastActive_ = rig.activePreset(); scrollToActive(); }
+    if (rig.revision() != lastRevision_) { lastRevision_ = rig.revision(); scroll_ = juce::jlimit(0, maxScroll(), scroll_); repaint(); }
+}
+
+void SetlistPanel::timerCallback() {}
+
+juce::Rectangle<int> SetlistPanel::rowBounds(int row) const {
+    return { list_.getX(), list_.getY() + row * (kRowH + kRowGap), list_.getWidth(), kRowH };
+}
+
+int SetlistPanel::maxScroll() const {
+    const int n = static_cast<int>(proc_.rig().presets().size()) + 1;
+    return juce::jmax(0, n * (kRowH + kRowGap) - kRowGap - list_.getHeight());
+}
+
+int SetlistPanel::rowAt(int y) const {
+    if (y < list_.getY() || y > list_.getBottom()) return -2;
+    const int row = (y - list_.getY() + scroll_) / (kRowH + kRowGap);
+    const int n = static_cast<int>(proc_.rig().presets().size()) + 1;
+    return row >= 0 && row < n ? row - 1 : -2;
+}
+
+void SetlistPanel::scrollToActive() {
+    const auto r = rowBounds(proc_.rig().activePreset() + 1);
+    const int top = r.getY() - list_.getY(), bottom = r.getBottom() - list_.getY();
+    if (top < scroll_) scroll_ = top;
+    else if (bottom > scroll_ + list_.getHeight()) scroll_ = bottom - list_.getHeight();
+    scroll_ = juce::jlimit(0, maxScroll(), scroll_);
+    repaint();
+}
+
+void SetlistPanel::paint(juce::Graphics& g) {
+    const auto& p = palette();
+    auto& rig = proc_.rig();
+    auto head = getLocalBounds().removeFromTop(56);
+    g.setColour(p.ink);
+    g.setFont(font(24.0f, Weight::Bold));
+    g.drawText("Setlist", head, juce::Justification::centredLeft, false);
+
+    g.saveState();
+    g.reduceClipRegion(list_);
+    const int n = static_cast<int>(rig.presets().size()) + 1;
+    auto drawRow = [&](int row, juce::Rectangle<int> r, bool floating) {
+        const int presetIndex = row - 1;
+        const bool active = rig.activePreset() == presetIndex;
+        auto bg = active ? p.ink : (hover_ == presetIndex && !dragging_ ? p.tileStrong : p.tile);
+        if (floating) bg = bg.withAlpha(0.95f);
+        g.setColour(bg);
+        g.fillRoundedRectangle(r.toFloat(), 16.0f);
+        const auto ink = active ? p.inkInverse : p.ink;
+        const auto sub = active ? p.inkInverse.withAlpha(0.65f) : p.secondaryInk;
+        auto inner = r.reduced(16, 0);
+        // Nummer (= tangent / fotswitch Program Change + 1).
+        g.setColour(sub);
+        g.setFont(font(15.0f, Weight::Regular));
+        g.drawText(juce::String(row), inner.removeFromLeft(26), juce::Justification::centredLeft, false);
+        // Draghandtag (inte för grundljudet).
+        if (row > 0) {
+            auto h = inner.removeFromRight(22).toFloat().withSizeKeepingCentre(16.0f, 12.0f);
+            g.setColour(sub.withAlpha(hover_ == presetIndex || floating ? 1.0f : 0.45f));
+            for (int k = 0; k < 3; ++k) g.fillRoundedRectangle(h.getX(), h.getY() + k * 5.0f, h.getWidth(), 2.0f, 1.0f);
         }
-        addAndMakeVisible(*pill);
-        pills_.push_back(std::move(pill));
+        juce::String name, names;
+        if (row == 0) {
+            name = S("Grundljud");
+            juce::StringArray on;
+            for (const auto& e : rig.effects()) { auto it = rig.base().find(e.id); if (it != rig.base().end() && it->second.enabled) on.add(u8(e.name)); }
+            names = on.isEmpty() ? S("Inga effekter på") : S("Alltid på: ") + on.joinIntoString(S(" · "));
+        } else {
+            const auto& pr = rig.presets()[size_t(presetIndex)];
+            name = u8(pr.name);
+            juce::StringArray inc;
+            for (const auto& e : rig.effects()) if (pr.overrides.count(e.id)) inc.add(u8(e.name));
+            names = inc.isEmpty() ? S("Tomt – ställ in effekter medan presetet är aktivt") : inc.joinIntoString(S(" · "));
+        }
+        g.setColour(ink);
+        g.setFont(font(16.5f, Weight::SemiBold));
+        g.drawText(name, inner.withTrimmedBottom(inner.getHeight() / 2 - 1), juce::Justification::bottomLeft, true);
+        g.setColour(sub);
+        g.setFont(font(12.5f));
+        g.drawText(names, inner.withTrimmedTop(inner.getHeight() / 2 + 3), juce::Justification::topLeft, true);
+    };
+    for (int row = 0; row < n; ++row) {
+        if (dragging_ && row - 1 == dragFrom_) continue;   // ritas flytande nedan
+        int visualRow = row;
+        if (dragging_ && row > 0) {
+            // Flytta undan raderna mellan ursprung och mål.
+            const int pi = row - 1;
+            if (dragFrom_ < dragTo_ && pi > dragFrom_ && pi <= dragTo_) visualRow = row - 1;
+            if (dragFrom_ > dragTo_ && pi >= dragTo_ && pi < dragFrom_) visualRow = row + 1;
+        }
+        drawRow(row, rowBounds(visualRow).translated(0, -scroll_), false);
     }
-    lastCount_ = rig.presets().size();
-    resized();
+    if (dragging_ && dragFrom_ >= 0) {
+        auto r = rowBounds(dragFrom_ + 1).withY(dragY_ - kRowH / 2);
+        juce::Path shape;
+        shape.addRoundedRectangle(r.toFloat(), 16.0f);
+        juce::DropShadow(juce::Colours::black.withAlpha(0.2f), 16, { 0, 6 }).drawForPath(g, shape);
+        drawRow(dragFrom_ + 1, r, true);
+    }
+    g.restoreState();
 }
 
-void PresetBar::refresh() {
-    auto& rig = proc_.rig();
-    if (rig.revision() == lastRevision_) return;
-    lastRevision_ = rig.revision();
-    bool namesChanged = rig.presets().size() != lastCount_;
-    for (size_t i = 0; !namesChanged && i < rig.presets().size(); ++i)
-        namesChanged = pills_[i + 1]->getButtonText() != u8(rig.presets()[i].name);
-    if (namesChanged) rebuild();
-    for (size_t i = 0; i < pills_.size(); ++i)
-        pills_[i]->setToggleState(static_cast<int>(i) - 1 == rig.activePreset(), juce::dontSendNotification);
-}
-
-void PresetBar::paint(juce::Graphics&) {}
-
-void PresetBar::resized() {
+void SetlistPanel::resized() {
     auto r = getLocalBounds();
-    add_.setBounds(r.removeFromRight(r.getHeight()));
-    r.removeFromRight(10);
-    analyse.setBounds(r.removeFromRight(r.getHeight()));
-    r.removeFromRight(12);
-    if (pills_.empty()) return;
-    const auto f = font(15.0f, Weight::SemiBold);
-    std::vector<float> widths;
-    float total = 0.0f;
-    for (auto& p : pills_) {
-        const float w = juce::jmax(132.0f, textWidth(f, p->getButtonText()) + textWidth(f, p->prefix) + 60.0f);
-        widths.push_back(w);
-        total += w;
-    }
-    const float gap = 10.0f;
-    const float avail = static_cast<float>(r.getWidth()) - gap * static_cast<float>(pills_.size() - 1);
-    const float scale = total > avail ? avail / total : 1.0f;
-    float x = static_cast<float>(r.getX());
-    for (size_t i = 0; i < pills_.size(); ++i) {
-        const float w = widths[i] * scale;
-        pills_[i]->setBounds(juce::roundToInt(x), r.getY(), juce::roundToInt(w), r.getHeight());
-        x += w + gap;
-    }
+    auto head = r.removeFromTop(56);
+    add_.setBounds(head.removeFromRight(46).withSizeKeepingCentre(46, 46));
+    head.removeFromRight(8);
+    analyse.setBounds(head.removeFromRight(46).withSizeKeepingCentre(46, 46));
+    auto nav = r.removeFromBottom(52);
+    prev_.setBounds(nav.removeFromLeft((nav.getWidth() - 10) / 2));
+    nav.removeFromLeft(10);
+    next_.setBounds(nav);
+    r.removeFromBottom(16);
+    r.removeFromTop(8);
+    list_ = r;
+    scroll_ = juce::jlimit(0, maxScroll(), scroll_);
 }
 
-void PresetBar::showMenu(int i) {
+void SetlistPanel::mouseDown(const juce::MouseEvent& e) {
+    downTime_ = juce::Time::getMillisecondCounter();
+    popupDown_ = e.mods.isPopupMenu();
+    pressRow_ = rowAt(e.y);
+    dragging_ = false;
+}
+
+void SetlistPanel::mouseDrag(const juce::MouseEvent& e) {
+    if (pressRow_ < 0 || popupDown_) return;   // grundljudet flyttas inte
+    if (!dragging_ && e.getDistanceFromDragStartY() != 0 && std::abs(e.getDistanceFromDragStartY()) > 6) {
+        dragging_ = true;
+        dragFrom_ = dragTo_ = pressRow_;
+    }
+    if (!dragging_) return;
+    dragY_ = juce::jlimit(list_.getY() + kRowH / 2, list_.getBottom() - kRowH / 2, e.y);
+    const int n = static_cast<int>(proc_.rig().presets().size());
+    const int row = (dragY_ - list_.getY() + scroll_) / (kRowH + kRowGap) - 1;
+    dragTo_ = juce::jlimit(0, n - 1, row);
+    // Autoscroll nära kanterna.
+    if (e.y < list_.getY() + 20) scroll_ = juce::jmax(0, scroll_ - 12);
+    if (e.y > list_.getBottom() - 20) scroll_ = juce::jmin(maxScroll(), scroll_ + 12);
+    repaint();
+}
+
+void SetlistPanel::mouseUp(const juce::MouseEvent& e) {
+    if (dragging_) {
+        if (dragFrom_ != dragTo_) proc_.rig().movePreset(dragFrom_, dragTo_);
+        dragging_ = false;
+        dragFrom_ = dragTo_ = -1;
+        repaint();
+        return;
+    }
+    const int row = rowAt(e.y);
+    if (row == -2 || row != pressRow_) return;
+    const bool menu = popupDown_ || juce::Time::getMillisecondCounter() - downTime_ >= 500;
+    if (row >= 0 && menu) { showMenu(row); return; }
+    proc_.rig().activate(row);
+}
+
+void SetlistPanel::mouseMove(const juce::MouseEvent& e) {
+    const int row = rowAt(e.y);
+    setMouseCursor(row >= 0 ? juce::MouseCursor::DraggingHandCursor
+                 : row == -1 ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
+    if (row != hover_) { hover_ = row; repaint(); }
+}
+
+void SetlistPanel::mouseWheelMove(const juce::MouseEvent&, const juce::MouseWheelDetails& w) {
+    scroll_ = juce::jlimit(0, maxScroll(), scroll_ - juce::roundToInt(w.deltaY * 240.0f));
+    repaint();
+}
+
+void SetlistPanel::showMenu(int i) {
     auto& rig = proc_.rig();
     if (i < 0 || i >= static_cast<int>(rig.presets().size())) return;
     const int n = static_cast<int>(rig.presets().size());
@@ -554,12 +566,12 @@ void PresetBar::showMenu(int i) {
     m.addSectionHeader(u8(rig.presets()[size_t(i)].name));
     m.addItem(1, S("Byt namn…"));
     m.addItem(2, "Duplicera");
-    m.addItem(3, S("Flytta åt vänster"), i > 0);
-    m.addItem(4, S("Flytta åt höger"), i < n - 1);
+    m.addItem(3, S("Flytta upp"), i > 0);
+    m.addItem(4, S("Flytta ned"), i < n - 1);
     m.addSeparator();
     m.addItem(5, S("Ta bort…"));
-    juce::Component::SafePointer<PresetBar> safe(this);
-    m.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(pills_[size_t(i + 1)].get()), [safe, i](int r) {
+    juce::Component::SafePointer<SetlistPanel> safe(this);
+    m.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this).withMousePosition(), [safe, i](int r) {
         if (!safe) return;
         auto& model = safe->proc_.rig();
         switch (r) {
@@ -571,7 +583,7 @@ void PresetBar::showMenu(int i) {
                 juce::AlertWindow::showAsync(
                     juce::MessageBoxOptions().withIconType(juce::MessageBoxIconType::NoIcon)
                         .withTitle(S("Ta bort ") + u8(model.presets()[size_t(i)].name) + "?")
-                        .withMessage(S("Presetet tas bort. Grundljudet och andra presets påverkas inte."))
+                        .withMessage(S("Presetet tas bort ur setlistan. Grundljudet och andra presets påverkas inte."))
                         .withButton("Ta bort", 1).withButton("Avbryt", 0).withAssociatedComponent(safe.getComponent()),
                     [safe, i](int res) { if (safe && res == 1) safe->proc_.rig().removePreset(i); });
                 break;
@@ -580,15 +592,15 @@ void PresetBar::showMenu(int i) {
     });
 }
 
-void PresetBar::rename(int i) {
+void SetlistPanel::rename(int i) {
     auto& rig = proc_.rig();
     if (i < 0 || i >= static_cast<int>(rig.presets().size())) return;
-    auto* w = new juce::AlertWindow(S("Namn på preset"), S("Ge presetet ett namn du känner igen på scen."),
+    auto* w = new juce::AlertWindow(S("Namn på preset"), S("Ge presetet ett namn du känner igen på scen, t.ex. låtens namn."),
                                     juce::MessageBoxIconType::NoIcon, this);
     w->addTextEditor("name", u8(rig.presets()[size_t(i)].name));
     w->addButton("Spara", 1, juce::KeyPress(juce::KeyPress::returnKey));
     w->addButton("Avbryt", 0, juce::KeyPress(juce::KeyPress::escapeKey));
-    juce::Component::SafePointer<PresetBar> safe(this);
+    juce::Component::SafePointer<SetlistPanel> safe(this);
     w->enterModalState(true, juce::ModalCallbackFunction::create([safe, w, i](int r) {
         if (!safe || r != 1) return;
         const auto name = w->getTextEditorContents("name").trim();
@@ -596,21 +608,45 @@ void PresetBar::rename(int i) {
     }), true);
 }
 
-// Högerklick / långt tryck på ett presetpiller öppnar menyn (via addMouseListener).
-void PresetBar::mouseDown(const juce::MouseEvent& e) {
-    downTime_ = juce::Time::getMillisecondCounter();
-    popupDown_ = e.mods.isPopupMenu();
+// ---------------------------------------------------------------------------
+// InputMeter
+// ---------------------------------------------------------------------------
+void InputMeter::update() {
+    auto& e = proc_.engine();
+    for (int ch = 0; ch < 2; ++ch) {
+        const float v = e.inputPeak(ch);
+        level_[ch] = juce::jmax(v, level_[ch] * 0.85f);
+        if (v >= hold_[ch]) { hold_[ch] = v; holdTicks_[ch] = 40; }
+        else if (--holdTicks_[ch] <= 0) hold_[ch] *= 0.9f;
+    }
+    repaint();
 }
 
-bool PresetBar::isMenuGesture() const {
-    return popupDown_ || juce::Time::getMillisecondCounter() - downTime_ >= 500;
-}
-
-void PresetBar::mouseUp(const juce::MouseEvent& e) {
-    if (e.eventComponent == this || e.mouseWasDraggedSinceMouseDown()) return;
-    const auto v = e.eventComponent->getProperties()["preset"];
-    if (!v.isVoid() && isMenuGesture()) showMenu(static_cast<int>(v));
-    popupDown_ = false;
+void InputMeter::paint(juce::Graphics& g) {
+    const auto& p = palette();
+    const int mode = proc_.engine().input().mode.load();
+    std::vector<int> chans;
+    if (mode == 0 || mode == 2) chans.push_back(0);
+    if (mode == 1 || mode == 2) chans.push_back(1);
+    auto r = getLocalBounds().reduced(0, chans.size() > 1 ? 10 : 18);
+    const int rowH = r.getHeight() / static_cast<int>(chans.size());
+    for (int ch : chans) {
+        auto row = r.removeFromTop(rowH);
+        drawCaption(g, ch == 0 ? S("In 1") : S("In 2"), row.removeFromLeft(38), p.secondaryInk);
+        auto bar = row.withSizeKeepingCentre(row.getWidth(), 6).toFloat();
+        g.setColour(p.tile);
+        g.fillRoundedRectangle(bar, 3.0f);
+        const float n = levelNorm(level_[ch]);
+        if (n > 0.0f) {
+            g.setColour(n > 0.985f ? p.danger : p.ink);
+            g.fillRoundedRectangle(bar.withWidth(juce::jmax(6.0f, bar.getWidth() * n)), 3.0f);
+        }
+        const float h = levelNorm(hold_[ch]);
+        if (h > 0.02f) {
+            g.setColour(h > 0.985f ? p.danger : p.ink);
+            g.fillRoundedRectangle(bar.getX() + bar.getWidth() * h - 1.5f, bar.getY() - 2.0f, 3.0f, bar.getHeight() + 4.0f, 1.5f);
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

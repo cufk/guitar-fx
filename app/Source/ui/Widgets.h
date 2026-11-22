@@ -107,49 +107,54 @@ private:
     float activity_ = 0.0f;
 };
 
-// Vänster spalt: ringen av streck (utnivå), presetnummer, namn och bläddring.
-class StageView final : public juce::Component {
+// Setlist: grundljud + presets i spelordning. Tryck = aktivera, dra en rad = ändra ordning,
+// Föregående/Nästa (och fotswitch CC 102/103, ←/→) stegar i den här ordningen.
+// Högerklick / långt tryck = byt namn, duplicera, ta bort.
+class SetlistPanel final : public juce::Component, private juce::Timer {
 public:
-    explicit StageView(GuitarFXProcessor& proc);
-    void update(float in1, float in2, float out, const juce::String& latency);
-    void paint(juce::Graphics&) override;
-    void resized() override;
-private:
-    GuitarFXProcessor& proc_;
-    IconButton prev_ { icons::Symbol::Prev, juce::String::fromUTF8("Föregående preset (←)") };
-    IconButton next_ { icons::Symbol::Next, juce::String::fromUTF8("Nästa preset (→)") };
-    float level_[3] {}, ring_ = 0.0f, hold_ = 0.0f;
-    int holdTicks_ = 0;
-    juce::String latency_;
-    juce::Rectangle<float> ringArea_;
-    juce::Rectangle<int> nameArea_, metersArea_, statusArea_;
-};
-
-// Presets som piller längst ned. Tryck = aktivera, igen = grundljud.
-// Högerklick / långt tryck = byt namn, duplicera, flytta, ta bort.
-class PresetBar final : public juce::Component {
-public:
-    explicit PresetBar(GuitarFXProcessor& proc);
+    explicit SetlistPanel(GuitarFXProcessor& proc);
     void refresh();
-    void resized() override;
     void paint(juce::Graphics&) override;
+    void resized() override;
     void mouseDown(const juce::MouseEvent&) override;
+    void mouseDrag(const juce::MouseEvent&) override;
     void mouseUp(const juce::MouseEvent&) override;
-private:
-    bool isMenuGesture() const;
-    void rebuild();
-    void showMenu(int presetIndex);
-    void rename(int presetIndex);
-    GuitarFXProcessor& proc_;
-    std::vector<std::unique_ptr<Pill>> pills_;   // 0 = grundljud
-    IconButton add_ { icons::Symbol::Plus, "Nytt preset" };
-public:
+    void mouseMove(const juce::MouseEvent&) override;
+    void mouseExit(const juce::MouseEvent&) override { hover_ = -2; repaint(); }
+    void mouseWheelMove(const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
     IconButton analyse { icons::Symbol::Waveform, juce::String::fromUTF8("Analysera en låt och skapa ett preset") };
 private:
-    uint64_t lastRevision_ = ~0ull;
-    size_t lastCount_ = ~size_t(0);
+    void timerCallback() override;
+    int rowAt(int y) const;                           // -1 = grundljud, 0.. = preset, -2 = ingen
+    juce::Rectangle<int> rowBounds(int row) const;    // row: 0 = grundljud, 1.. = presets (före scroll)
+    void showMenu(int presetIndex);
+    void rename(int presetIndex);
+    void scrollToActive();
+    int maxScroll() const;
+    GuitarFXProcessor& proc_;
+    IconButton add_ { icons::Symbol::Plus, "Nytt preset" };
+    Pill prev_ { juce::String::fromUTF8("‹  Föregående"), false };
+    Pill next_ { juce::String::fromUTF8("Nästa  ›"), false };
+    juce::Rectangle<int> list_;
+    int scroll_ = 0, hover_ = -2;
+    int pressRow_ = -2, dragFrom_ = -1, dragTo_ = -1, dragY_ = 0;
     juce::uint32 downTime_ = 0;
-    bool popupDown_ = false;
+    bool popupDown_ = false, dragging_ = false;
+    uint64_t lastRevision_ = ~0ull;
+    int lastActive_ = -3;
+    static constexpr int kRowH = 60, kRowGap = 8;
+};
+
+// Kompakt signalindikator: bara de ingångar som används (IN 1, IN 2 eller båda vid Blanda).
+class InputMeter final : public juce::Component {
+public:
+    explicit InputMeter(GuitarFXProcessor& proc) : proc_(proc) {}
+    void update();
+    void paint(juce::Graphics&) override;
+private:
+    GuitarFXProcessor& proc_;
+    float level_[2] {}, hold_[2] {};
+    int holdTicks_[2] {};
 };
 
 // Ingång, utgång och nivåer (popover från sidhuvudet).
