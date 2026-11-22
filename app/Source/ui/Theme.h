@@ -29,8 +29,13 @@ bool isDarkMode();
 namespace size {
 constexpr int page = 32, gap = 12, cardRadius = 20, rowRadius = 18;
 }
-// Gemensamt rutnät för effektrutor och rattar: alltid fyra lika breda kolumner.
-constexpr int kGridColumns = 4, kGridGap = 12;
+// Gemensamt rutnät: effektrutorna i fyra kolumner; reglagen i sju lika breda platser
+// (flest reglage = EQ:s sju), så att ett reglage alltid har samma storlek oavsett effekt.
+constexpr int kGridColumns = 4, kGridGap = 12, kControlColumns = 7;
+// Gemensamma mått för det nya formspråket.
+namespace size {
+constexpr int sidebar = 360, columnGap = 40, sectionHead = 44, sectionGap = 16, button = 44, smallButton = 34;
+}
 
 enum class Weight { Light, Regular, SemiBold, Bold };
 juce::Font font(float size, Weight w = Weight::Regular);
@@ -57,6 +62,7 @@ public:
                           juce::Slider&) override;
     void drawLinearSlider(juce::Graphics&, int x, int y, int w, int h, float pos, float minPos, float maxPos,
                           juce::Slider::SliderStyle, juce::Slider&) override;
+    int getSliderThumbRadius(juce::Slider&) override { return 14; }
     void drawButtonBackground(juce::Graphics&, juce::Button&, const juce::Colour&, bool over, bool down) override;
     juce::Font getTextButtonFont(juce::TextButton&, int height) override;
     void drawCallOutBoxBackground(juce::CallOutBox&, juce::Graphics&, const juce::Path&, juce::Image&) override;

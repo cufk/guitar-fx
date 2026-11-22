@@ -163,6 +163,25 @@ void LookAndFeel::drawRotarySlider(juce::Graphics& g, int x, int y, int w, int h
 // Smalt reglage: tunn bana, fylld del i reglagets färg och en liten knopp (MiniSlider).
 void LookAndFeel::drawLinearSlider(juce::Graphics& g, int x, int y, int w, int h, float pos, float, float,
                                    juce::Slider::SliderStyle style, juce::Slider& s) {
+    if (style == juce::Slider::LinearVertical) {
+        // Lodrätt reglage: smalt spår, svart fyllning nedifrån och ett svart runt grepp.
+        const auto& p = palette();
+        const float cx = static_cast<float>(x) + static_cast<float>(w) * 0.5f;
+        const float top = static_cast<float>(y) - 14.0f, bottom = static_cast<float>(y + h) + 14.0f;
+        g.setColour(p.tileStrong);
+        g.fillRoundedRectangle(cx - 3.0f, top, 6.0f, bottom - top, 3.0f);
+        const float py = juce::jlimit(static_cast<float>(y), static_cast<float>(y + h), pos);
+        // Reglage kring noll (t.ex. ±12 dB) fylls från noll: ingen fyllning = neutralt.
+        float from = bottom;
+        if (s.getMinimum() < 0.0 && s.getMaximum() >= 0.0)
+            from = static_cast<float>(y) + static_cast<float>(h) * (1.0f - static_cast<float>(s.valueToProportionOfLength(0.0)));
+        g.setColour(s.isEnabled() ? p.ink : p.tertiaryInk);
+        g.fillRoundedRectangle(cx - 3.0f, juce::jmin(from, py), 6.0f, std::abs(from - py), 3.0f);
+        const float r = s.isMouseButtonDown() ? 15.0f : 14.0f;
+        g.setColour(s.isEnabled() ? p.knob : p.tertiaryInk);
+        g.fillEllipse(cx - r, py - r, 2.0f * r, 2.0f * r);
+        return;
+    }
     if (style != juce::Slider::LinearHorizontal) {
         juce::LookAndFeel_V4::drawLinearSlider(g, x, y, w, h, pos, 0, 0, style, s);
         return;

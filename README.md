@@ -30,8 +30,9 @@ Raspberry Pi eller egen pedal.
   (parallellkompression som behåller anslaget). Visar hur mycket den komprimerar.
 - **Widener:** bredare stereo med mitt/sida-teknik – exakt monokompatibel (L+R = originalet).
 - **Utgång Stereo / Mono (summa):** mono om bara en kanal går till mixern.
-- **Monokromt GUI med runda rattar:** varm off-white (eller mörkt), stora rubriker,
-  presets som en setlist till vänster, effekterna som rutor och rattar i lika stora rutor;
+- **Monokromt GUI med lodräta reglage:** varm off-white (eller mörkt), ett gemensamt rutnät,
+  presets som en setlist till vänster, effekterna som rutor (svart = på) och reglagen i lika
+  stora rutor som fyller höjden;
   en smal nivåmätare i sidhuvudet visar bara de ingångar som används. Eget appfönster utan JUCE:s "Options"-rad. Utseende: följ
   systemet, ljust eller mörkt (⋯ → Utseende). Typsnitt: Inter (inbäddat, OFL-licens).
 - **Chorus** (hastighet, djup, mix) och **Flanger** (hastighet, djup, återkoppling, mix),
@@ -185,9 +186,10 @@ för stereo i PA:t.
 överst i setlistan och ställ in EQ och de effekter som alltid ska vara på (t.ex. ett diskret rum).
 
 **Gränssnittet:**
-- Rutorna uppe till höger är effekterna (fylld prick = på). Tryck på en för att visa dess
-  rattar nedanför. Rattarna ligger i rutor som alltid är lika stora, i samma fyra kolumner
-  som effektrutorna. Dra en ratt uppåt/nedåt; dubbelklick återställer standardvärdet.
+- Rutorna uppe till höger är effekterna. Tryck på en för att visa dess
+  reglage nedanför. Effekterna står i signalordning och en svart ruta betyder att effekten
+  är på. Reglagen är lodräta och alltid lika stora (sju platser – EQ har flest). Dra det
+  svarta greppet uppåt/nedåt; dubbelklick återställer standardvärdet.
 - Reglaget till höger om effektens namn slår på/av den.
 - Vänster spalt är **setlistan**: grundljudet överst och sedan presets i spelordning. Dra en
   rad (handtaget ≡) för att flytta den; **‹ Föregående / Nästa ›** stegar genom listan – samma
@@ -201,8 +203,8 @@ för stereo i PA:t.
 **Ett preset** är en eller flera effekter med egna inställningar:
 1. Tryck **+** ovanför setlistan och ge presetet ett namn (det blir aktivt).
 2. Ställ in effekterna. **Allt du ändrar sparas i det aktiva presetet** – en effekt du ändrar
-   eller slår på tas automatiskt med (rutan visar PRESET). Grundljudet påverkas inte.
-3. Effekter du inte rör följer grundljudet. **I preset** av = ta bort effekten ur presetet.
+   eller slår på tas automatiskt med (rutan visar I PRESET). Grundljudet påverkas inte.
+3. Effekter du inte rör följer grundljudet. **I presetet** av = ta bort effekten ur presetet.
 4. Vill du ändra grundljudet: välj **0 Grundljud** först.
 
 **Live:** tryck på en rad i setlistan för att aktivera det och på **0 Grundljud** för att gå
@@ -294,7 +296,7 @@ referens när effekterna utvecklas.
 4. ✅ Akustisk ingång: mikrofon / inbyggd / blanda med auto-justering
 5. ✅ Chorus, flanger och reverb (FDN)
 6. ✅ EQ med notch, grundljud + presets, MIDI/tangenter
-7. ✅ Sustain (kompressor), widener, mono-utgång, monokromt GUI med runda rattar
+7. ✅ Sustain (kompressor), widener, mono-utgång, monokromt GUI (nu med lodräta reglage)
 8. ✅ Stämapparat
 9. ✅ Låtanalys → förslag på preset (signalanalys, lokalt)
 10. Delay

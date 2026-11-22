@@ -25,7 +25,7 @@ GuitarFXEditor::GuitarFXEditor(GuitarFXProcessor& p)
     setWantsKeyboardFocus(true);
     setResizable(true, true);
     setResizeLimits(1040, 790, 2600, 1800);
-    setSize(1320, 930);
+    setSize(1320, 900);
     startTimerHz(30);
 }
 
@@ -105,19 +105,17 @@ void GuitarFXEditor::paintOverChildren(juce::Graphics& g) {
 }
 
 void GuitarFXEditor::resized() {
-    auto r = getLocalBounds().reduced(ui::size::page, 0);
-    r.removeFromTop(24);
+    // Ett rutnät: 32 px marginal runt om, sidhuvud 56, 24 px luft, innehåll, 24 px luft, stämfält 72.
+    auto r = getLocalBounds().reduced(ui::size::page);
     auto head = r.removeFromTop(56);
     header_.setBounds(head);
-    meter_.setBounds(head.withTrimmedRight(48 + 24).removeFromRight(220));   // vänster om ⋯
+    meter_.setBounds(head.withTrimmedRight(ui::size::button + 16).removeFromRight(440));   // vänster om ⋯
     r.removeFromTop(24);
-    r.removeFromBottom(20);
-    tuner_.setBounds(r.removeFromBottom(60));      // stämapparaten längst ned
-    r.removeFromBottom(28);                        // luft ovanför stämapparaten
-    setlist_.setBounds(r.removeFromLeft(juce::jlimit(320, 440, r.getWidth() * 30 / 100)));
-    r.removeFromLeft(32);
-    grid_.setBounds(r.removeFromTop(150));
-    r.removeFromTop(20);
+    tuner_.setBounds(r.removeFromBottom(72));
+    r.removeFromBottom(24);
+    setlist_.setBounds(r.removeFromLeft(juce::jlimit(300, ui::size::sidebar, getWidth() * 28 / 100)));
+    r.removeFromLeft(ui::size::columnGap);
+    grid_.setBounds(r.removeFromTop(ui::EffectGrid::preferredHeight()));
     panel_.setBounds(r);
     analysisView_.setBounds(setlist_.getBounds().getUnion(panel_.getBounds()).getUnion(grid_.getBounds()));
 }

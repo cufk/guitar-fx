@@ -21,14 +21,17 @@ Driftsäkerhet live är huvudkravet. Svara på svenska.
   högerklick/långt tryck = meny; Föregående/Nästa (och MIDI CC 102/103, ←/→) stegar.
   Fristående appen autosparar state var 3:e sekund när något ändrats.
 - GUI: `app/Source/ui/` – monokromt formspråk (användarens inspiration: varm off-white,
-  beige rutor, svarta runda rattar med ljus prick, stora fetstilta rubriker, tunna stora
-  siffror; mörkt läge inverterar). Theme (palett, Inter-typsnitt, LookAndFeel inkl. ratt),
+  beige rutor, svart = på/aktiv, lodräta reglage med svart runt grepp; mörkt läge inverterar).
+  Godkänd design (nov 2026): ett rutnät, rubriker 22 px på samma linje (`drawSectionHeading`),
+  knappar 44 px (små 34 px), mått i `ui::size`. Theme (palett, Inter-typsnitt, LookAndFeel inkl.
+  lodrätt reglage),
   Icons (vektorikoner per effekt), Widgets (HeaderBar, InputMeter, SetlistPanel, EffectGrid,
   EffectPanel, KnobTile, InputPanel, TunerStrip, AnalysisView). InputMeter i sidhuvudet visar
   bara de ingångar som används (IN 1 / IN 2 enligt ingångsläget). Status (CPU, limiter,
   latens, MIDI) ligger i ⋯-menyn. Ingen färg utom rött för varningar.
-  Rattar och effektrutor följer ett fast rutnät med fyra kolumner (`kGridColumns`); alla
-  rattrutor har samma bredd och höjd oavsett antal rattar (ratten = 0,8 × rutans kortsida).
+  Effektrutorna: fyra kolumner (`kGridColumns`) i signalordning (sorterade på kedjeplats).
+  Reglagen: en rad med sju lika breda platser (`kControlColumns`) som fyller höjden – samma
+  storlek oavsett effekt. InputPanel använder fortfarande runda rattar (`KnobTile(spec, false)`).
 - Stämapparat: lågt fält längst ned (`TunerStrip`), stämningar i `ui::tunings()`, valet och
   A4 sparas i processorns state. `engine/TunerTap.h` (ljudtråden kopierar torr ingång till
   ringbuffert; "Mute" gäller bara medan GUI:t är öppet) + `dsp/core/PitchDetector.h` (YIN).
@@ -38,7 +41,7 @@ Driftsäkerhet live är huvudkravet. Svara på svenska.
   standardval. Mät aldrig rum som "median av avklingning" i tät musik – det ger alltid max.
   Kalibrerat mot CC-låtar från Internet Archive (testas lokalt, checkas inte in).
   Användaren valde signalanalys (inte Demucs/AI-separering) – Demucs kan bli ett Mac-tillval.
-  Ny effekt = lägg till i kedjan + `rig_.addEffect({...})` i processorn; ruta, rattar och
+  Ny effekt = lägg till i kedjan + `rig_.addEffect({...})` i processorn; ruta, reglage och
   sparning kommer automatiskt.
 - Fristående app: eget fönster i `app/Source/StandaloneApp.cpp`
   (JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP) – inbyggd titelrad, ljudinställningar via ⋯-menyn.
@@ -66,7 +69,7 @@ Driftsäkerhet live är huvudkravet. Svara på svenska.
 ## Nästa steg
 Se "Färdplan" i README.md. Klart: akustisk ingång, EQ med notch, sustain (kompressor),
 chorus, flanger, widener, reverb (FDN, utklingning vid bypass), mono-utgång, presets (Rig)
-med MIDI/tangenter, monokromt GUI med runda rattar, eget appfönster, distortion,
+med MIDI/tangenter, monokromt GUI med lodräta reglage, eget appfönster, distortion,
 kabinett-IR, latensmätare (5,60 ms rundtur, buffert 64).
 Stämapparat och låtanalys klara. Nästa: delay (kan använda låtens BPM); MIDI learn;
 scenläge för iPad.
