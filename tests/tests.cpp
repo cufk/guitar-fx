@@ -1231,16 +1231,51 @@ int main() {
         CHECK(b.width > a.width);   // reverben gör också ljudet bredare
     });
 
-    run("Låtanalys: bredd – mono är smalt, okorrelerat stereo är brett", [&] {
+    run("Låtanalys: tät musik utan rum ger inte max reverb (regression)", [&] {
+        // Tät mono-mix: ett liggande ackord som aldrig tystnar + plock ovanpå, helt torrt.
+        auto x = makeSong(110.0f, 0.4f, 40, 11);
+        for (size_t i = 0; i < x.size(); ++i) {
+            const float t = float(i) / float(kSr);
+            x[i] += 0.12f * (std::sin(2.0f * 3.14159265f * 110.0f * t) + std::sin(2.0f * 3.14159265f * 164.81f * t)
+                             + 0.5f * std::sin(2.0f * 3.14159265f * 220.0f * t));
+        }
+        const auto a = gfx::analyseSong(x.data(), nullptr, int(x.size()), kSr);
+        std::printf("       tät mono: %.2f s, mix %.0f %%\n", a.reverbDecaySec, a.reverbMix * 100);
+        CHECK(a.reverbDecaySec <= 2.0f);
+        CHECK(a.reverbMix <= 0.25f);
+    });
+
+    run("Låtanalys: stereo – mer efterklang ger lägre koherens och längre förslag", [&] {
+        auto dry = makeSong(100.0f, 0.4f, 30, 12);
+        auto wet = [&](float decay) {
+            std::vector<float> l = dry, r = dry;
+            gfx::Reverb rv;
+            rv.decaySec.set(decay); rv.mix.set(0.4f); rv.predelayMs.set(10.0f);
+            rv.prepare({ kSr, kBlock, 2 });
+            for (int start = 0; start < int(l.size()); start += kBlock) {
+                float* p[2] = { l.data() + start, r.data() + start };
+                rv.process({ p, 2, std::min(kBlock, int(l.size()) - start) });
+            }
+            return gfx::analyseSong(l.data(), r.data(), int(l.size()), kSr);
+        };
+        const auto a = wet(1.0f), b = wet(2.5f), c = wet(5.0f);
+        std::printf("       koherens %.2f / %.2f / %.2f -> %.1f / %.1f / %.1f s\n", a.coherence, b.coherence, c.coherence,
+                    a.reverbDecaySec, b.reverbDecaySec, c.reverbDecaySec);
+        CHECK(a.coherence > b.coherence && b.coherence > c.coherence);
+        CHECK(a.reverbDecaySec < b.reverbDecaySec && b.reverbDecaySec < c.reverbDecaySec);
+        CHECK(c.reverbDecaySec <= 4.0f);   // aldrig över taket
+    });
+
+    run("Låtanalys: bredd – mono är smalt, panorerat stereo är brett", [&] {
         auto l = makeSong(100.0f, 0.5f, 20, 3);
-        auto r2 = makeSong(100.0f, 0.5f, 20, 4);
-        std::mt19937 rng(5);
-        std::normal_distribution<float> nd(0.0f, 0.05f);
-        for (size_t i = 0; i < r2.size(); ++i) r2[i] = 0.3f * l[i] + nd(rng);   // delvis korrelerad, mycket sidosignal
+        std::vector<float> r2(l.size());
+        for (size_t i = 0; i < l.size(); ++i) r2[i] = 0.25f * l[i];   // instrument panorerat åt vänster
         const auto mono = gfx::analyseSong(l.data(), l.data(), int(l.size()), kSr);
         const auto wide = gfx::analyseSong(l.data(), r2.data(), int(l.size()), kSr);
         CHECK(mono.width < 0.05f);
         CHECK(wide.width > 0.6f);
+        CHECK(wide.coherence > 0.95f);          // panorering är sammanhängande – inte rum
+        CHECK(wide.reverbDecaySec < 1.5f);      // och ger därför inget stort rum
     });
 
     run("Låtanalys: klang – basrik låt ger basförslag, mörk låt ger diskantsänkning", [&] {

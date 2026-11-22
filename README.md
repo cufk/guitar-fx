@@ -212,16 +212,19 @@ någon sekund och sker helt lokalt – inget laddas upp och ingen modell laddas 
 
 | Område | Vad som mäts | Blir i presetet |
 |---|---|---|
-| Klang | Medelspektrum jämfört med en typisk mix (−4,5 dB/oktav) | EQ: lågskärning, bas, mitt (frekvens), diskant |
-| Rum | Hur nivån klingar ut efter anslag (helst i pauser) och hur mycket som ligger kvar mellan tonerna | Reverb: efterklang, mix, predelay, storlek |
-| Bredd | Sida/mitt-förhållande | Widener (om låten är tydligt stereo) |
+| Klang | Tersbandsspektrum jämfört med en referenskurva för inspelad musik | EQ: lågskärning, bas, diskant; mitt bara vid tydlig topp/dal |
+| Rum | Stereo: koherens mellan vänster och höger (efterklang gör kanalerna osammanhängande). Mono: sen avklingning i fria avklingningar | Reverb: efterklang 0,8–4 s, mix 12–40 %, predelay, storlek |
+| Bredd | Sida/mitt-förhållande, minus den bredd som kommer från rummet | Widener (om låten är panorerat bred) |
 | Dynamik | Spridning i korttidsnivå (p95 − p10) | Sustain (om låten är komprimerad) |
 | Tempo | Anslagsrytm, 60–180 BPM | Visas (används för delay senare) |
 
 **Skapa preset** lägger till ett preset med låtens namn och aktiverar det. Analysen lyssnar på
-hela mixen (sång, trummor), så se förslaget som en startpunkt och justera med öronen. Rummet
-mäts bäst i låtar med pauser eller ett tydligt slut; i tätt spelade låtar underskattas långa
-reverber något.
+hela mixen (sång, trummor), så se förslaget som en startpunkt och justera med öronen.
+
+Rummet mäts säkrast i **stereoinspelningar**. I mono jämförs fria avklingningar; finns för få
+blir förslaget ett försiktigt standardval (1,5 s, 15 %) – rutan *Rum* visar hur det mättes.
+Analysen är kalibrerad mot ett urval Creative Commons-inspelningar och mot en torr gitarr med
+känd tillagd efterklang (1 / 2,5 / 5 s gav 2,1 / 3,0 / 3,9 s i förslag).
 
 ## Mäta latens (färdplanens steg 2)
 
