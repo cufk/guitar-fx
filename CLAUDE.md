@@ -18,10 +18,11 @@ Driftsäkerhet live är huvudkravet. Svara på svenska.
   beige rutor, svarta runda rattar med ljus prick, stora fetstilta rubriker, tunna stora
   siffror; mörkt läge inverterar). Theme (palett, Inter-typsnitt, LookAndFeel inkl. ratt),
   Icons (vektorikoner per effekt), Widgets (HeaderBar, StageView, EffectGrid, EffectPanel,
-  KnobTile, PresetBar, InputPanel, TunerView). Ingen färg utom rött för varningar.
+  KnobTile, PresetBar, InputPanel, TunerStrip, AnalysisView). Ingen färg utom rött för varningar.
   Rattar och effektrutor följer ett fast rutnät med fyra kolumner (`kGridColumns`).
-- Stämapparat: `engine/TunerTap.h` (ljudtråden kopierar torr ingång till ringbuffert,
-  tystar ev. utgången) + `dsp/core/PitchDetector.h` (YIN, körs på GUI-tråden).
+- Stämapparat: alltid synligt fält (`TunerStrip`) under rubriken. `engine/TunerTap.h`
+  (ljudtråden kopierar torr ingång till ringbuffert; "Tysta ut" gäller bara medan GUI:t är
+  öppet) + `dsp/core/PitchDetector.h` (YIN, körs på GUI-tråden).
 - Låtanalys: `engine/SongAnalyzer` (ren signalanalys: klang, rum, bredd, dynamik, tempo) körs
   i egen tråd från `AnalysisView`; `GuitarFXProcessor::createPresetFromAnalysis` gör preset.
   Användaren valde signalanalys (inte Demucs/AI-separering) – Demucs kan bli ett Mac-tillval.

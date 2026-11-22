@@ -4,7 +4,7 @@ Egen gitarreffektprocessor: chorus, flanger, reverb och distortion. Utvecklas p�
 med Focusrite Scarlett och är byggd för att flyttas till iPad (live) och eventuellt
 Raspberry Pi eller egen pedal.
 
-## Status (v0.8 – låtanalys, stämapparat)
+## Status (v0.9 – stämapparat alltid synlig, låtanalys)
 
 - Portabel DSP-kärna och ljudmotor utan beroenden (`dsp/`, `engine/`)
 - **Ingångssteg för akustisk gitarr:** Ingång 1, Ingång 2 eller **Blanda 1 + 2**
@@ -20,9 +20,10 @@ Raspberry Pi eller egen pedal.
 - **EQ:** lågskärning, bas, mitt (valbar frekvens), diskant och smal notch mot rundgång.
 - **Låtanalys → preset:** välj en låt (WAV/AIFF/FLAC/MP3/M4A). Appen analyserar klang,
   rum, bredd, dynamik och tempo lokalt och föreslår ett preset med låtens namn.
-- **Stämapparat:** tryck **Stäm** (eller T / MIDI CC 105). Stor tonbokstav, halvcirkel
-  −50…+50 cent, närmaste sträng (E A D G B E) markeras. Utgången tystas medan du stämmer
-  (kan stängas av), referens A4 430–446 Hz. Noggrannhet < 1 cent i hela gitarrens register.
+- **Stämapparat alltid synlig:** ett vågrätt fält under rubriken visar ton, skala −50…+50
+  cent, avvikelse och närmaste sträng (E A D G B E) hela tiden. **Tysta ut** (eller T /
+  MIDI CC 105) stänger av ljudet ut medan du stämmer – då blir fältet svart så att det syns
+  på håll. Referens A4 430–446 Hz. Noggrannhet < 1 cent i hela gitarrens register.
 - **Sustain:** kompressor för längre ton – sustain, anslag, släpp, nivå och mix
   (parallellkompression som behåller anslaget). Visar hur mycket den komprimerar.
 - **Widener:** bredare stereo med mitt/sida-teknik – exakt monokompatibel (L+R = originalet).
@@ -193,7 +194,7 @@ Appen startar med exempel – *Stor hall*, *Chorus* och *Flanger-svep* – att �
 | **←** / **→** (även Page Up/Down) | Föregående / nästa |
 | MIDI **Program Change 0–8** | Preset 1–9 |
 | MIDI **CC 102 / 103 / 104** (värde ≥ 64) | Föregående / nästa / grundljud |
-| Tangent **T** eller MIDI **CC 105** | Stämapparat på/av |
+| Tangent **T** eller MIDI **CC 105** | Tysta ut (stämning) på/av |
 
 MIDI-ingångar (även Bluetooth-MIDI-pedaler som parats i macOS *Ljud-MIDI-inställningar*)
 öppnas automatiskt. Ljudkort och MIDI väljs under **⋯ → Ljudinställningar…**. Pedaler som i stället
