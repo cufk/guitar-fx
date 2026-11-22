@@ -8,7 +8,7 @@ juce::String S(const char* utf8) { return juce::String::fromUTF8(utf8); }
 }
 
 GuitarFXEditor::GuitarFXEditor(GuitarFXProcessor& p)
-    : AudioProcessorEditor(&p), processor_(p), stage_(p), grid_(p, [this](int i) { panel_.show(i); }), panel_(p), presets_(p) {
+    : AudioProcessorEditor(&p), processor_(p), stage_(p), grid_(p, [this](int i) { panel_.show(i); }), panel_(p), presets_(p), tunerView_(p) {
     applyAppearance(true);
     setLookAndFeel(&lnf_);
     // Menyer, dialoger och popovers ritas i egna fönster – ge dem samma tema.
@@ -20,9 +20,12 @@ GuitarFXEditor::GuitarFXEditor(GuitarFXProcessor& p)
         juce::CallOutBox::launchAsynchronously(std::move(panel), getLocalArea(&header_, header_.input.getBounds()), this);
     };
     header_.more.onClick = [this] { showMoreMenu(); };
+    header_.tune.onClick = [this] { setTunerOpen(!tunerView_.isOpen()); };
+    tunerView_.onClose = [this] { setTunerOpen(false); };
 
     for (juce::Component* c : std::initializer_list<juce::Component*> { &header_, &stage_, &grid_, &panel_, &presets_ })
         addAndMakeVisible(c);
+    addChildComponent(tunerView_);
 
     setWantsKeyboardFocus(true);
     setResizable(true, true);
@@ -33,6 +36,7 @@ GuitarFXEditor::GuitarFXEditor(GuitarFXProcessor& p)
 
 GuitarFXEditor::~GuitarFXEditor() {
     processor_.engine().latencyProbe().cancel();
+    tunerView_.setOpen(false);
     juce::LookAndFeel::setDefaultLookAndFeel(nullptr);
     setLookAndFeel(nullptr);
 }
@@ -86,7 +90,18 @@ void GuitarFXEditor::timerCallback() {
     lastBlockCount_ = blocks;
     if ((before > 15) != (stalledTicks_ > 15)) repaint();
 
+    // Stämapparaten kan också öppnas/stängas via MIDI (processorn sätter flaggan).
+    const bool tunerWanted = e.tuner().active.load();
+    if (tunerWanted != tunerView_.isOpen()) setTunerOpen(tunerWanted);
+    header_.tune.setToggleState(tunerView_.isOpen(), juce::dontSendNotification);
+
     if (++tick_ % 15 == 0) applyAppearance(false);
+}
+
+void GuitarFXEditor::setTunerOpen(bool open) {
+    tunerView_.setOpen(open);
+    if (open) tunerView_.toFront(false);
+    header_.tune.setToggleState(open, juce::dontSendNotification);
 }
 
 void GuitarFXEditor::paint(juce::Graphics& g) {
@@ -119,6 +134,7 @@ void GuitarFXEditor::resized() {
     grid_.setBounds(r.removeFromTop(150));
     r.removeFromTop(20);
     panel_.setBounds(r);
+    tunerView_.setBounds(stage_.getBounds().getUnion(panel_.getBounds()).getUnion(grid_.getBounds()));
 }
 
 // Ta tangentbordsfokus när fönstret visas, så att 1–9/←/→ (och pedaler som
@@ -132,6 +148,8 @@ void GuitarFXEditor::visibilityChanged() {
 bool GuitarFXEditor::keyPressed(const juce::KeyPress& k) {
     auto& rig = processor_.rig();
     const auto c = k.getTextCharacter();
+    if (c == 't' || c == 'T') { setTunerOpen(!tunerView_.isOpen()); return true; }
+    if (tunerView_.isOpen() && k == juce::KeyPress::escapeKey) { setTunerOpen(false); return true; }
     if (c >= '1' && c <= '9') { rig.select(static_cast<int>(c - '1')); return true; }
     if (c == '0' || k == juce::KeyPress::escapeKey) { rig.activate(-1); return true; }
     if (k == juce::KeyPress::rightKey || k == juce::KeyPress::pageDownKey) { rig.selectNext(); return true; }
@@ -158,6 +176,7 @@ void GuitarFXEditor::showMoreMenu() {
     help.addItem(30, S("Tangenter: 1–9, 0/Esc, ←/→"), false);
     help.addItem(31, S("MIDI Program Change 0–8 = preset 1–9"), false);
     help.addItem(32, S("MIDI CC 102/103 = föregående/nästa, 104 = grundljud"), false);
+    help.addItem(33, S("T eller MIDI CC 105 = stämapparat"), false);
     m.addSubMenu(S("Fotswitch och tangenter"), help);
     juce::Component::SafePointer<GuitarFXEditor> safe(this);
     m.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&header_.more).withMinimumWidth(240), [safe](int r) {

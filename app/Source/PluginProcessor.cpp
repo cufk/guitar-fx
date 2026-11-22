@@ -129,7 +129,7 @@ void GuitarFXProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
     juce::AudioProcessLoadMeasurer::ScopedTimer timer(loadMeasurer_, buffer.getNumSamples());
 
     // Fotswitch/Bluetooth-MIDI: Program Change 0 = preset 1, 1 = preset 2 osv. (samma igen
-    // eller nummer utan preset = grundljud). CC 102/103 = föregående/nästa, CC 104 = grundljud.
+    // eller nummer utan preset = grundljud). CC 102/103 = föregående/nästa, CC 104 = grundljud, CC 105 = stämapparat på/av.
     for (const auto meta : midi) {
         const auto m = meta.getMessage();
         if (m.isProgramChange()) {
@@ -140,6 +140,7 @@ void GuitarFXProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
             if (cc == 102) pendingCommand_.store(kCmdPrev, std::memory_order_release);
             if (cc == 103) pendingCommand_.store(kCmdNext, std::memory_order_release);
             if (cc == 104) pendingCommand_.store(kCmdBase, std::memory_order_release);
+            if (cc == 105) engine_.tuner().active.store(!engine_.tuner().active.load(std::memory_order_relaxed), std::memory_order_relaxed);
             lastMidi_.store((2 << 16) | (cc << 8) | m.getControllerValue(), std::memory_order_relaxed);
         }
     }

@@ -29,6 +29,8 @@ bool isDarkMode();
 namespace size {
 constexpr int page = 32, gap = 12, cardRadius = 20, rowRadius = 18;
 }
+// Gemensamt rutnät för effektrutor och rattar: alltid fyra lika breda kolumner.
+constexpr int kGridColumns = 4, kGridGap = 12;
 
 enum class Weight { Light, Regular, SemiBold, Bold };
 juce::Font font(float size, Weight w = Weight::Regular);

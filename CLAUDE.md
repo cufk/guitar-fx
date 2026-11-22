@@ -18,7 +18,10 @@ Driftsäkerhet live är huvudkravet. Svara på svenska.
   beige rutor, svarta runda rattar med ljus prick, stora fetstilta rubriker, tunna stora
   siffror; mörkt läge inverterar). Theme (palett, Inter-typsnitt, LookAndFeel inkl. ratt),
   Icons (vektorikoner per effekt), Widgets (HeaderBar, StageView, EffectGrid, EffectPanel,
-  KnobTile, PresetBar, InputPanel). Ingen färg utom rött för varningar.
+  KnobTile, PresetBar, InputPanel, TunerView). Ingen färg utom rött för varningar.
+  Rattar och effektrutor följer ett fast rutnät med fyra kolumner (`kGridColumns`).
+- Stämapparat: `engine/TunerTap.h` (ljudtråden kopierar torr ingång till ringbuffert,
+  tystar ev. utgången) + `dsp/core/PitchDetector.h` (YIN, körs på GUI-tråden).
   Ny effekt = lägg till i kedjan + `rig_.addEffect({...})` i processorn; ruta, rattar och
   sparning kommer automatiskt.
 - Fristående app: eget fönster i `app/Source/StandaloneApp.cpp`
@@ -45,7 +48,8 @@ Se "Färdplan" i README.md. Klart: akustisk ingång, EQ med notch, sustain (komp
 chorus, flanger, widener, reverb (FDN, utklingning vid bypass), mono-utgång, presets (Rig)
 med MIDI/tangenter, monokromt GUI med runda rattar, eget appfönster, distortion,
 kabinett-IR, latensmätare (5,60 ms rundtur, buffert 64).
-Nästa: delay; MIDI learn; scenläge för iPad.
+Stämapparat klar. Nästa: låtanalys → presetförslag (vägval väntar på användaren),
+delay; MIDI learn; scenläge för iPad.
 Känt: effekter före chorus bearbetar båda kanalerna fast signalen är mono (dubbel CPU) –
 värt att åtgärda före Raspberry Pi. getStateInformation läser Rig och antar
 meddelandetråden (gäller standalone; vissa plugin-värdar anropar från annan tråd).
