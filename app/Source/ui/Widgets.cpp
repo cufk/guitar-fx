@@ -58,11 +58,16 @@ void Pill::paintButton(juce::Graphics& g, bool over, bool down) {
     const auto& p = palette();
     const bool on = getToggleState();
     auto r = getLocalBounds().toFloat();
-    g.setColour(on ? p.ink.interpolatedWith(p.background, down ? 0.15f : 0.0f)
-                   : (down || over ? p.tileStrong : p.tile));
+    auto fill = on ? p.ink.interpolatedWith(p.background, down ? 0.15f : 0.0f)
+                   : (down || over ? p.tileStrong : p.tile);
+    if (on && !onFill.isTransparent()) fill = onFill.interpolatedWith(p.background, down ? 0.15f : 0.0f);
+    if (!on && !offFill.isTransparent()) fill = offFill.overlaidWith(p.ink.withAlpha(down ? 0.08f : over ? 0.04f : 0.0f));
+    g.setColour(fill);
     g.fillRoundedRectangle(r, r.getHeight() * 0.5f);
 
-    const auto ink = !isEnabled() ? p.tertiaryInk : on ? p.inkInverse : p.ink;
+    auto ink = !isEnabled() ? p.tertiaryInk : on ? p.inkInverse : p.ink;
+    if (isEnabled() && on && !onText.isTransparent()) ink = onText;
+    if (isEnabled() && !on && !offText.isTransparent()) ink = offText;
     const auto f = font(r.getHeight() >= 44.0f ? 15.0f : 13.5f, Weight::SemiBold);
     const juce::String label = getButtonText();
     float w = textWidth(f, label);
@@ -727,7 +732,7 @@ void InputPanel::resized() {
 
 
 // ---------------------------------------------------------------------------
-// TunerView
+// TunerStrip
 // ---------------------------------------------------------------------------
 namespace {
 // Standardstämning, låga E till höga E (MIDI-nummer).
@@ -735,56 +740,62 @@ constexpr int kStrings[6] = { 40, 45, 50, 55, 59, 64 };
 const char* kStringNames[6] = { "E", "A", "D", "G", "B", "E" };
 }
 
-TunerView::TunerView(GuitarFXProcessor& proc) : proc_(proc) {
-    detector_.prepare(48000.0, 4096);
-    window_.assign(4096, 0.0f);
-    mute_.setTooltip(S("Ingen signal ut medan du stämmer"));
-    mute_.onClick = [this] { proc_.engine().tuner().muteOutput.store(mute_.getToggleState()); };
+TunerStrip::TunerStrip(GuitarFXProcessor& proc) : proc_(proc) {
+    mute_.setTooltip(S("Tysta utgången medan du stämmer (T / MIDI CC 105)"));
+    mute_.onClick = [this] { proc_.engine().tuner().muteOutput.store(mute_.getToggleState()); repaint(); };
     reference_.setTooltip(S("Referenston för A4"));
     reference_.onClick = [this] {
         juce::PopupMenu m;
+        m.addSectionHeader(S("Referens A4"));
         for (int f = 430; f <= 446; f += (f < 438 || f >= 442) ? 2 : 1)
             m.addItem(f, juce::String(f) + " Hz", true, juce::roundToInt(referenceA4_) == f);
-        juce::Component::SafePointer<TunerView> safe(this);
+        juce::Component::SafePointer<TunerStrip> safe(this);
         m.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&reference_), [safe](int r) {
             if (!safe || r <= 0) return;
             safe->referenceA4_ = static_cast<float>(r);
-            safe->reference_.setButtonText("A4 = " + juce::String(r) + " Hz");
+            safe->reference_.setButtonText(juce::String(r) + " Hz");
         });
     };
-    close_.onClick = [this] { if (onClose) onClose(); };
-    for (auto* c : { &mute_, &reference_, &close_ }) addAndMakeVisible(c);
-    for (int i = 0; i < 6; ++i) {
-        auto p = std::make_unique<Pill>(kStringNames[i], false);
-        p->setInterceptsMouseClicks(false, false);
-        addAndMakeVisible(*p);
-        strings_.push_back(std::move(p));
-    }
-    mute_.setToggleState(proc_.engine().tuner().muteOutput.load(), juce::dontSendNotification);
+    addAndMakeVisible(mute_);
+    addAndMakeVisible(reference_);
+    proc_.engine().tuner().active.store(true);   // lyssnar så länge fönstret är öppet
+    startTimerHz(25);
 }
 
-void TunerView::setOpen(bool open) {
-    open_ = open;
-    proc_.engine().tuner().active.store(open);
-    setVisible(open);
-    if (open) {
-        const double sr = proc_.engine().spec().sampleRate > 0 ? proc_.engine().spec().sampleRate : 48000.0;
-        detector_.prepare(sr, static_cast<int>(sr * 0.085));   // ~85 ms fönster
+TunerStrip::~TunerStrip() {
+    // Stängs fönstret slutar stämapparaten lyssna – och en ev. tystad utgång släpps.
+    proc_.engine().tuner().active.store(false);
+}
+
+void TunerStrip::toggleMute() {
+    auto& t = proc_.engine().tuner();
+    t.muteOutput.store(!t.muteOutput.load());
+}
+
+void TunerStrip::timerCallback() {
+    auto& tap = proc_.engine().tuner();
+    const double sr = proc_.engine().spec().sampleRate > 0 ? proc_.engine().spec().sampleRate : 48000.0;
+    if (std::abs(sr - preparedRate_) > 1.0) {
+        detector_.prepare(sr, static_cast<int>(sr * 0.085));   // ca 85 ms fönster
         window_.assign(static_cast<size_t>(detector_.windowSamples()), 0.0f);
-        recent_.clear();
-        holdTicks_ = 0;
-        hz_ = 0.0f;
-        startTimerHz(30);
-    } else {
-        stopTimer();
+        preparedRate_ = sr;
     }
-}
+    const bool muted = tap.muteOutput.load();
+    mute_.setToggleState(muted, juce::dontSendNotification);
+    // Pillren ska synas mot fältets bakgrund i båda lägena (tystad = svart fält).
+    const auto& p = palette();
+    for (auto* pill : { &mute_, &reference_ }) {
+        pill->offFill = muted ? p.inkInverse.withAlpha(0.14f) : p.background;
+        pill->offText = muted ? p.inkInverse : p.ink;
+        pill->onFill  = muted ? p.inkInverse : p.ink;
+        pill->onText  = muted ? p.ink : p.inkInverse;
+    }
+    mute_.setButtonText(muted ? S("Tystad") : S("Tysta ut"));
 
-void TunerView::timerCallback() {
-    proc_.engine().tuner().latest(window_.data(), static_cast<int>(window_.size()));
+    tap.latest(window_.data(), static_cast<int>(window_.size()));
     const auto r = detector_.detect(window_.data(), static_cast<int>(window_.size()));
     if (r.hz > 0.0f && r.confidence > 0.85f && r.level > 0.002f) {
-        // Median av de senaste avläsningarna – stabil nål utan att bli trög.
+        // Median av de senaste avläsningarna – stabil men inte trög.
         recent_.push_back(r.hz);
         if (recent_.size() > 5) recent_.erase(recent_.begin());
         auto sorted = recent_;
@@ -795,112 +806,113 @@ void TunerView::timerCallback() {
         hz_ = hz;
         midi_ = n.midi;
         cents_ = n.cents;
-        holdTicks_ = 30;   // visa senaste ton ca 1 s efter att den tystnat
+        holdTicks_ = 25;   // visa senaste ton ca 1 s efter att den tystnat
     } else if (holdTicks_ > 0 && --holdTicks_ == 0) {
         hz_ = 0.0f;
         recent_.clear();
     }
     shownCents_ += (cents_ - shownCents_) * 0.35f;
 
-    // Närmaste sträng i standardstämning.
-    int nearest = -1;
+    nearest_ = -1;
     if (hz_ > 0.0f) {
         int bestDist = 1000;
         for (int i = 0; i < 6; ++i) {
             const int dist = std::abs(midi_ - kStrings[i]);
-            if (dist < bestDist) { bestDist = dist; nearest = i; }
+            if (dist < bestDist) { bestDist = dist; nearest_ = i; }
         }
-        if (bestDist > 2) nearest = -1;
+        if (bestDist > 2) nearest_ = -1;
     }
-    for (int i = 0; i < 6; ++i) strings_[size_t(i)]->setToggleState(i == nearest, juce::dontSendNotification);
     repaint();
 }
 
-void TunerView::paint(juce::Graphics& g) {
+void TunerStrip::paint(juce::Graphics& g) {
     const auto& p = palette();
-    g.fillAll(p.background);
-    auto head = getLocalBounds().removeFromTop(60);
-    g.setColour(p.ink);
-    g.setFont(font(30.0f, Weight::Bold));
-    g.drawText(S("Stämapparat"), head, juce::Justification::centredLeft, false);
+    const bool muted = proc_.engine().tuner().muteOutput.load();
+    // Tystad utgång: hela fältet inverterat så att det syns på håll.
+    const auto bg = muted ? p.ink : p.tile;
+    const auto ink = muted ? p.inkInverse : p.ink;
+    const auto dim = muted ? p.inkInverse.withAlpha(0.55f) : p.secondaryInk;
+    const auto faint = muted ? p.inkInverse.withAlpha(0.25f) : p.line;
+    drawTile(g, getLocalBounds().toFloat(), 20.0f, bg);
 
     const bool hasNote = hz_ > 0.0f;
     const bool inTune = hasNote && std::abs(cents_) < 3.0f;
+    const auto n = gfx::noteFromHz(hz_, referenceA4_);
 
-    // Halvcirkel av streck: −50 … +50 cent, tänt streck = avvikelse.
-    const auto c = juce::Point<float>(arcArea_.getCentreX(), arcArea_.getBottom());
-    const float outer = arcArea_.getWidth() * 0.5f;
+    // Ton.
+    const float noteH = static_cast<float>(noteArea_.getHeight());
+    g.setColour(hasNote ? ink : dim);
+    const auto nf = font(noteH * 0.9f, Weight::Light);
+    g.setFont(nf);
+    const auto noteText = hasNote ? juce::String(n.name.c_str()) : S("–");
+    g.drawText(noteText, noteArea_, juce::Justification::centredLeft, false);
+    if (hasNote) {
+        const float nw = textWidth(nf, noteText);
+        g.setColour(dim);
+        g.setFont(font(noteH * 0.28f));
+        g.drawText(juce::String(n.octave), juce::Rectangle<float>(static_cast<float>(noteArea_.getX()) + nw + 3.0f,
+                   static_cast<float>(noteArea_.getBottom()) - noteH * 0.42f, 30.0f, noteH * 0.32f), juce::Justification::centredLeft, false);
+    }
+
+    // Skala −50 … +50 cent, tänt streck = avvikelse (mitten markeras när strängen är stämd).
     constexpr int kTicks = 51;
-    const int litTick = juce::jlimit(0, kTicks - 1, juce::roundToInt((shownCents_ + 50.0f) / 100.0f * (kTicks - 1)));
+    const auto sa = scaleArea_.toFloat();
+    const float cy = sa.getCentreY();
+    const int lit = juce::jlimit(0, kTicks - 1, juce::roundToInt((shownCents_ + 50.0f) / 100.0f * (kTicks - 1)));
     for (int i = 0; i < kTicks; ++i) {
-        const float t = static_cast<float>(i) / (kTicks - 1);           // 0..1
-        const float ang = juce::MathConstants<float>::pi * (t - 0.5f);  // -90°..+90°
+        const float x = sa.getX() + sa.getWidth() * static_cast<float>(i) / (kTicks - 1);
         const bool centre = i == kTicks / 2;
         const bool major = centre || i % 5 == 0;
-        const bool lit = hasNote && i == litTick;
-        float len = major ? outer * 0.11f : outer * 0.07f;
-        if (lit) len = outer * 0.24f;
-        if (centre && inTune) len = outer * 0.24f;
-        const float r0 = outer - len, r1 = outer;
-        juce::Line<float> line(c.x + r0 * std::sin(ang), c.y - r0 * std::cos(ang), c.x + r1 * std::sin(ang), c.y - r1 * std::cos(ang));
-        g.setColour(lit || (centre && inTune) ? p.ink : (centre ? p.secondaryInk : p.line));
-        g.drawLine(line, lit || (centre && inTune) ? 5.0f : (major ? 2.0f : 1.4f));
-    }
-    g.setColour(p.tertiaryInk);
-    g.setFont(captionFont());
-    g.drawText(S("−50"), juce::Rectangle<float>(c.x - outer - 20.0f, c.y + 6.0f, 40.0f, 16.0f), juce::Justification::centred);
-    g.drawText(S("+50"), juce::Rectangle<float>(c.x + outer - 20.0f, c.y + 6.0f, 40.0f, 16.0f), juce::Justification::centred);
-
-    // Ton i mitten.
-    const auto n = gfx::noteFromHz(hz_, referenceA4_);
-    g.setColour(hasNote ? p.ink : p.tertiaryInk);
-    const float noteSize = juce::jmin(static_cast<float>(noteArea_.getHeight()) * 0.95f, outer * 0.75f);
-    g.setFont(font(noteSize, Weight::Light));
-    const auto noteText = hasNote ? juce::String(n.name.c_str()) : S("–");
-    const float nw = juce::GlyphArrangement::getStringWidth(font(noteSize, Weight::Light), noteText);
-    g.drawText(noteText, noteArea_, juce::Justification::centred, false);
-    if (hasNote) {
-        g.setFont(font(noteSize * 0.22f, Weight::Regular));
-        g.setColour(p.secondaryInk);
-        g.drawText(juce::String(n.octave), juce::Rectangle<float>(noteArea_.getCentreX() + nw * 0.5f + 4.0f,
-                   static_cast<float>(noteArea_.getBottom()) - noteSize * 0.42f, noteSize * 0.4f, noteSize * 0.3f), juce::Justification::centredLeft, false);
+        const bool on = hasNote && i == lit;
+        float h = major ? sa.getHeight() * 0.36f : sa.getHeight() * 0.2f;
+        if (on || (centre && inTune)) h = sa.getHeight();
+        g.setColour(on || (centre && inTune) ? ink : (centre ? dim : faint));
+        g.fillRoundedRectangle(x - (on ? 2.5f : 0.75f), cy - h * 0.5f, on ? 5.0f : 1.5f, h, 1.0f);
     }
 
-    // Cent och Hz.
-    juce::String info;
-    if (!hasNote) info = S("Spela en sträng");
-    else if (inTune) info = S("Stämd  ·  ") + juce::String(hz_, 1).replaceCharacter('.', ',') + " Hz";
-    else info = minusSign((cents_ > 0 ? "+" : "") + juce::String(juce::roundToInt(cents_))) + S(" cent  ·  ")
-              + juce::String(hz_, 1).replaceCharacter('.', ',') + S(" Hz  ·  ") + (cents_ > 0 ? S("för högt") : S("för lågt"));
-    g.setColour(inTune ? p.ink : p.secondaryInk);
-    g.setFont(font(20.0f, inTune ? Weight::SemiBold : Weight::Regular));
-    g.drawText(info, infoArea_, juce::Justification::centred, true);
+    // Cent och Hz (eller status).
+    juce::String info, sub;
+    if (!hasNote) { info = muted ? S("Utgång tystad") : S("Stämapparat"); sub = muted ? S("Spela en sträng") : S("Spela en sträng för att stämma"); }
+    else if (inTune) { info = S("Stämd"); sub = juce::String(hz_, 1).replaceCharacter('.', ',') + " Hz"; }
+    else {
+        info = minusSign((cents_ > 0 ? "+" : "") + juce::String(juce::roundToInt(cents_))) + S(" cent");
+        sub = juce::String(hz_, 1).replaceCharacter('.', ',') + S(" Hz · ") + (cents_ > 0 ? S("för högt") : S("för lågt"));
+    }
+    auto ia = infoArea_;
+    g.setColour(ink);
+    g.setFont(font(18.0f, Weight::SemiBold));
+    g.drawText(info, ia.removeFromTop(ia.getHeight() / 2 + 2), juce::Justification::bottomLeft, true);
+    g.setColour(dim);
+    g.setFont(font(13.0f));
+    g.drawText(sub, ia.withTrimmedTop(2), juce::Justification::topLeft, true);
+
+    // Strängar: närmaste markeras med en fylld cirkel.
+    auto st = stringsArea_.toFloat();
+    const float cw = st.getWidth() / 6.0f;
+    for (int i = 0; i < 6; ++i) {
+        auto c = juce::Rectangle<float>(st.getX() + cw * i, st.getY(), cw, st.getHeight()).withSizeKeepingCentre(30.0f, 30.0f);
+        const bool sel = i == nearest_;
+        if (sel) { g.setColour(ink); g.fillEllipse(c); }
+        g.setColour(sel ? bg : dim);
+        g.setFont(font(14.0f, sel ? Weight::Bold : Weight::SemiBold));
+        g.drawText(kStringNames[i], c, juce::Justification::centred, false);
+    }
 }
 
-void TunerView::resized() {
-    auto r = getLocalBounds();
-    auto head = r.removeFromTop(60);
-    close_.setBounds(head.removeFromRight(110).withSizeKeepingCentre(110, 48));
-    head.removeFromRight(10);
-    reference_.setBounds(head.removeFromRight(150).withSizeKeepingCentre(150, 48));
-    head.removeFromRight(10);
-    mute_.setBounds(head.removeFromRight(120).withSizeKeepingCentre(120, 48));
-
-    auto stringsRow = r.removeFromBottom(56);
-    const int gap = kGridGap;
-    const int w = juce::jmin(110, (stringsRow.getWidth() - gap * 5) / 6);
-    auto row = stringsRow.withSizeKeepingCentre(w * 6 + gap * 5, 56);
-    for (auto& s : strings_) { s->setBounds(row.removeFromLeft(w)); row.removeFromLeft(gap); }
-    r.removeFromBottom(28);
-    infoArea_ = r.removeFromBottom(32);
-    r.removeFromBottom(8);
-    r.removeFromTop(20);
-    const float d = juce::jmin(static_cast<float>(r.getWidth()) * 0.8f, static_cast<float>(r.getHeight()) * 1.6f);
-    arcArea_ = juce::Rectangle<float>(d, d * 0.5f).withCentre({ r.toFloat().getCentreX(), r.toFloat().getY() + d * 0.25f });
-    noteArea_ = arcArea_.toNearestInt().withTrimmedTop(static_cast<int>(arcArea_.getHeight() * 0.3f)).withSizeKeepingCentre(static_cast<int>(d * 0.5f), static_cast<int>(arcArea_.getHeight() * 0.7f));
-    noteArea_.setY(static_cast<int>(arcArea_.getBottom()) - noteArea_.getHeight());
+void TunerStrip::resized() {
+    auto r = getLocalBounds().reduced(24, 0);
+    mute_.setBounds(r.removeFromRight(118).withSizeKeepingCentre(118, 44));
+    r.removeFromRight(8);
+    reference_.setBounds(r.removeFromRight(92).withSizeKeepingCentre(92, 44));
+    r.removeFromRight(20);
+    stringsArea_ = r.removeFromRight(juce::jmin(240, r.getWidth() / 5)).withSizeKeepingCentre(juce::jmin(240, r.getWidth() / 5), 32);
+    r.removeFromRight(24);
+    noteArea_ = r.removeFromLeft(86).reduced(0, 10);
+    r.removeFromLeft(12);
+    infoArea_ = r.removeFromLeft(170).reduced(0, 14);
+    r.removeFromLeft(24);
+    scaleArea_ = r.withSizeKeepingCentre(r.getWidth(), juce::jmin(46, r.getHeight() - 24));
 }
-
 
 // ---------------------------------------------------------------------------
 // AnalysisView
@@ -1102,9 +1114,7 @@ void AnalysisView::resized() {
 // ---------------------------------------------------------------------------
 HeaderBar::HeaderBar() {
     input.setTooltip(S("Ingång, utgång och nivåer"));
-    tune.setTooltip(S("Stämapparat (T)"));
     analyse.setTooltip(S("Analysera en låt och skapa ett preset"));
-    addAndMakeVisible(tune);
     addAndMakeVisible(analyse);
     addAndMakeVisible(input);
     addAndMakeVisible(more);
@@ -1131,8 +1141,6 @@ void HeaderBar::resized() {
     more.setBounds(r.removeFromRight(48).withSizeKeepingCentre(48, 48));
     r.removeFromRight(10);
     input.setBounds(r.removeFromRight(178).withSizeKeepingCentre(178, 48));
-    r.removeFromRight(10);
-    tune.setBounds(r.removeFromRight(100).withSizeKeepingCentre(100, 48));
     r.removeFromRight(10);
     analyse.setBounds(r.removeFromRight(160).withSizeKeepingCentre(160, 48));
 }

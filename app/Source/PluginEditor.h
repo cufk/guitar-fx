@@ -1,10 +1,11 @@
 #pragma once
 // Scen-GUI v4, monokromt:
-//   sidhuvud  – stor rubrik med aktivt läge, ingång/utgång (popover), meny
+//   sidhuvud  – stor rubrik med aktivt läge, låtanalys, ingång/utgång (popover), meny
+//   stämfält  – stämapparat över hela bredden, alltid synlig (Tysta ut = T)
 //   vänster   – ring av streck (utnivå) runt aktivt presetnummer, namn, bläddring, mätare
 //   höger     – effekterna som rutor + vald effekt med runda rattar
 //   nederst   – presets som piller (ett i taget, igen = grundljud)
-// Tangenter: 1–9 = preset, 0/Esc = grundljud, ←/→ = föregående/nästa, T = stämapparat.
+// Tangenter: 1–9 = preset, 0/Esc = grundljud, ←/→ = föregående/nästa, T = tysta ut (stämning).
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "PluginProcessor.h"
@@ -26,7 +27,6 @@ private:
     void timerCallback() override;
     void applyAppearance(bool force);
     void showMoreMenu();
-    void setTunerOpen(bool open);
     void setAnalysisOpen(bool open);
     void startLatencyMeasurement();
     void exportPresets();
@@ -40,7 +40,7 @@ private:
     ui::EffectGrid grid_;
     ui::EffectPanel panel_;
     ui::PresetBar presets_;
-    ui::TunerView tunerView_;
+    ui::TunerStrip tuner_;
     ui::AnalysisView analysisView_;
     juce::TooltipWindow tooltips_ { this, 700 };
     std::unique_ptr<juce::FileChooser> chooser_;

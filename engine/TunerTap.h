@@ -18,8 +18,8 @@ class TunerTap {
 public:
     static constexpr int kSize = 16384;   // > 0,3 s vid 48 kHz
 
-    std::atomic<bool> active { false };   // skrivs bara när stämapparaten är öppen
-    std::atomic<bool> muteOutput { true };
+    std::atomic<bool> active { false };      // sätts av GUI:t medan fönstret är öppet
+    std::atomic<bool> muteOutput { false };  // "Tysta ut" – gäller bara medan active är sant
 
     TunerTap() : buf_(kSize, 0.0f) {}   // finns alltid – även om ljudkortet aldrig startar
 
