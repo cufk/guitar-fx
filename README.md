@@ -4,7 +4,7 @@ Egen gitarreffektprocessor: chorus, flanger, reverb och distortion. Utvecklas p�
 med Focusrite Scarlett och är byggd för att flyttas till iPad (live) och eventuellt
 Raspberry Pi eller egen pedal.
 
-## Status (v0.7 – stämapparat, fast rutnät)
+## Status (v0.8 – låtanalys, stämapparat)
 
 - Portabel DSP-kärna och ljudmotor utan beroenden (`dsp/`, `engine/`)
 - **Ingångssteg för akustisk gitarr:** Ingång 1, Ingång 2 eller **Blanda 1 + 2**
@@ -18,6 +18,8 @@ Raspberry Pi eller egen pedal.
   tryck igen för att gå tillbaka till grundljudet. Styrs med knapparna, tangenter eller
   MIDI-fotswitch (även Bluetooth). Reverbsvansen klingar ut naturligt vid byte.
 - **EQ:** lågskärning, bas, mitt (valbar frekvens), diskant och smal notch mot rundgång.
+- **Låtanalys → preset:** välj en låt (WAV/AIFF/FLAC/MP3/M4A). Appen analyserar klang,
+  rum, bredd, dynamik och tempo lokalt och föreslår ett preset med låtens namn.
 - **Stämapparat:** tryck **Stäm** (eller T / MIDI CC 105). Stor tonbokstav, halvcirkel
   −50…+50 cent, närmaste sträng (E A D G B E) markeras. Utgången tystas medan du stämmer
   (kan stängas av), referens A4 430–446 Hz. Noggrannhet < 1 cent i hela gitarrens register.
@@ -56,7 +58,7 @@ dsp/            Ren C++20. Effect-interface, buffrar, parametrar, effekter.
   effects/      Gain, SafetyLimiter, Eq, Sustain, Distortion, Cabinet, Chorus, Flanger,
                 Widener, Reverb
 engine/         InputMixer, effektkedja, Engine (ingång → in-gain → kedja → ut-gain →
-                limiter), LatencyProbe, TunerTap, Rig (grundljud + presets).
+                limiter), LatencyProbe, TunerTap, Rig (grundljud + presets), SongAnalyzer.
 app/Source/ui/  Tema (monokromt, Inter), ikoner och GUI-komponenter.
 app/Resources/  Typsnitt (Inter, SIL Open Font License).
 app/            JUCE-skal (Standalone/plugin) + GUI. Endast limkod.
@@ -198,6 +200,24 @@ MIDI-ingångar (även Bluetooth-MIDI-pedaler som parats i macOS *Ljud-MIDI-inst�
 skickar tangenttryck (sidvändare för noter) fungerar direkt med ←/→ eller Page Up/Down.
 Senast mottagna MIDI visas längst ned till höger.
 
+## Låtanalys
+
+Tryck **Analysera låt** (eller ⋯ → Analysera låt…) och välj en ljudfil. Analysen tar
+någon sekund och sker helt lokalt – inget laddas upp och ingen modell laddas ner.
+
+| Område | Vad som mäts | Blir i presetet |
+|---|---|---|
+| Klang | Medelspektrum jämfört med en typisk mix (−4,5 dB/oktav) | EQ: lågskärning, bas, mitt (frekvens), diskant |
+| Rum | Hur nivån klingar ut efter anslag (helst i pauser) och hur mycket som ligger kvar mellan tonerna | Reverb: efterklang, mix, predelay, storlek |
+| Bredd | Sida/mitt-förhållande | Widener (om låten är tydligt stereo) |
+| Dynamik | Spridning i korttidsnivå (p95 − p10) | Sustain (om låten är komprimerad) |
+| Tempo | Anslagsrytm, 60–180 BPM | Visas (används för delay senare) |
+
+**Skapa preset** lägger till ett preset med låtens namn och aktiverar det. Analysen lyssnar på
+hela mixen (sång, trummor), så se förslaget som en startpunkt och justera med öronen. Rummet
+mäts bäst i låtar med pauser eller ett tydligt slut; i tätt spelade låtar underskattas långa
+reverber något.
+
 ## Mäta latens (färdplanens steg 2)
 
 1. Koppla bort förstärkare/hörlurar. Slå **av** INST på ingången och vrid ner gain.
@@ -245,7 +265,7 @@ referens när effekterna utvecklas.
 6. ✅ EQ med notch, grundljud + presets, MIDI/tangenter
 7. ✅ Sustain (kompressor), widener, mono-utgång, monokromt GUI med runda rattar
 8. ✅ Stämapparat
-9. Låtanalys → förslag på preset
+9. ✅ Låtanalys → förslag på preset (signalanalys, lokalt)
 10. Delay
 11. Kroppssimulering för inbyggd mikrofon (IR via befintlig faltning)
 12. MIDI learn (valfria meddelanden per preset), scenläge med extra stora knappar

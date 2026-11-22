@@ -164,6 +164,40 @@ void GuitarFXProcessor::timerCallback() {
     cabinet_->collectGarbage();
 }
 
+int GuitarFXProcessor::createPresetFromAnalysis(const gfx::SongAnalysis& a, const juce::String& name) {
+    const int i = rig_.addPreset(name.toStdString());
+    rig_.activate(i);
+
+    // Klang: EQ efter låtens frekvensbalans (notch lämnas orörd).
+    rig_.setIncludedInActive("eq", true);
+    eq_->lowCutHz.set(a.lowCutHz);
+    eq_->lowGainDb.set(a.lowGainDb);
+    eq_->midFreqHz.set(a.midHz);
+    eq_->midGainDb.set(a.midGainDb);
+    eq_->highGainDb.set(a.highGainDb);
+
+    // Rum: reverb efter efterklang och mängd.
+    rig_.setIncludedInActive("reverb", true);
+    reverb_->decaySec.set(a.reverbDecaySec);
+    reverb_->mix.set(a.reverbMix);
+    reverb_->predelayMs.set(a.reverbPredelayMs);
+    reverb_->size.set(juce::jlimit(0.3f, 1.0f, a.reverbDecaySec / 4.0f));
+
+    // Bredd: widener bara om låten är tydligt stereo.
+    if (a.width > 0.25f) {
+        rig_.setIncludedInActive("widener", true);
+        widener_->width.set(juce::jlimit(0.2f, 0.9f, a.width * 0.8f));
+    }
+    // Dynamik: sustain om låten är komprimerad; parallellt så att anslaget behålls.
+    if (a.compression > 0.3f) {
+        rig_.setIncludedInActive("sustain", true);
+        sustain_->amount.set(juce::jlimit(0.2f, 0.9f, 0.2f + 0.7f * a.compression));
+        sustain_->mix.set(0.6f);
+    }
+    rig_.syncFromLive();
+    return i;
+}
+
 juce::String GuitarFXProcessor::lastMidiDescription() const {
     const int v = lastMidi_.load(std::memory_order_relaxed);
     if (v < 0) return {};

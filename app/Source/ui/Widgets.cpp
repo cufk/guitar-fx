@@ -901,13 +901,211 @@ void TunerView::resized() {
     noteArea_.setY(static_cast<int>(arcArea_.getBottom()) - noteArea_.getHeight());
 }
 
+
+// ---------------------------------------------------------------------------
+// AnalysisView
+// ---------------------------------------------------------------------------
+AnalysisView::AnalysisView(GuitarFXProcessor& proc) : proc_(proc) {
+    choose_.onClick = [this] { chooseFile(); };
+    create_.setToggleState(true, juce::dontSendNotification);   // primär knapp (svart)
+    create_.onClick = [this] {
+        if (state_ != State::Done) return;
+        proc_.createPresetFromAnalysis(result_, title_);
+        if (onClose) onClose();
+    };
+    close_.onClick = [this] { if (onClose) onClose(); };
+    for (auto* c : { &choose_, &create_, &close_ }) addAndMakeVisible(c);
+    create_.setVisible(false);
+}
+
+AnalysisView::~AnalysisView() { stopWorker(); }
+
+void AnalysisView::stopWorker() {
+    cancel_ = true;
+    if (worker_.joinable()) worker_.join();
+    cancel_ = false;
+}
+
+void AnalysisView::setOpen(bool open) {
+    open_ = open;
+    setVisible(open);
+    if (!open) { stopWorker(); stopTimer(); if (state_ == State::Working) state_ = State::Idle; }
+    repaint();
+}
+
+void AnalysisView::chooseFile() {
+    chooser_ = std::make_unique<juce::FileChooser>(S("Välj en låt att analysera"),
+        juce::File::getSpecialLocation(juce::File::userMusicDirectory), "*.wav;*.aif;*.aiff;*.flac;*.mp3;*.m4a;*.ogg");
+    juce::Component::SafePointer<AnalysisView> safe(this);
+    chooser_->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                          [safe](const juce::FileChooser& fc) {
+                              if (safe && fc.getResult() != juce::File()) safe->start(fc.getResult());
+                          });
+}
+
+void AnalysisView::start(const juce::File& file) {
+    stopWorker();
+    title_ = file.getFileNameWithoutExtension();
+    state_ = State::Working;
+    progress_ = 0.0f;
+    finished_ = false;
+    error_.clear();
+    create_.setVisible(false);
+    // Läsning och analys i egen tråd – GUI och ljud påverkas inte.
+    worker_ = std::thread([this, file] {
+        juce::AudioFormatManager formats;
+        formats.registerBasicFormats();
+        std::unique_ptr<juce::AudioFormatReader> reader(formats.createReaderFor(file));
+        gfx::SongAnalysis a;
+        if (reader == nullptr) {
+            error_ = S("Kunde inte läsa filen. Prova WAV, AIFF, FLAC eller MP3.");
+        } else {
+            const auto maxLen = static_cast<juce::int64>(reader->sampleRate * 360.0);   // högst 6 minuter
+            const int n = static_cast<int>(juce::jmin(reader->lengthInSamples, maxLen));
+            juce::AudioBuffer<float> buf(juce::jmin(2, static_cast<int>(reader->numChannels)), juce::jmax(1, n));
+            reader->read(&buf, 0, n, 0, true, buf.getNumChannels() > 1);
+            a = gfx::analyseSong(buf.getReadPointer(0), buf.getNumChannels() > 1 ? buf.getReadPointer(1) : nullptr,
+                                 n, reader->sampleRate, [this](float p) { progress_ = p; return !cancel_.load(); });
+            if (!a.valid && !cancel_) error_ = S("Filen är för kort eller tyst för att analysera.");
+        }
+        result_ = a;
+        finished_ = true;
+    });
+    startTimerHz(30);
+    repaint();
+}
+
+void AnalysisView::timerCallback() {
+    if (state_ == State::Working && finished_.load()) {
+        if (worker_.joinable()) worker_.join();
+        state_ = result_.valid ? State::Done : State::Failed;
+        create_.setVisible(state_ == State::Done);
+        choose_.setButtonText(state_ == State::Done ? S("Välj annan låt") : S("Välj låt…"));
+        stopTimer();
+        resized();
+    }
+    repaint();
+}
+
+void AnalysisView::paint(juce::Graphics& g) {
+    const auto& p = palette();
+    g.fillAll(p.background);
+    auto head = getLocalBounds().removeFromTop(60);
+    g.setColour(p.ink);
+    g.setFont(font(30.0f, Weight::Bold));
+    g.drawText(S("Låtanalys"), head, juce::Justification::centredLeft, false);
+
+    auto body = body_;
+    if (state_ == State::Idle || state_ == State::Failed) {
+        auto box = body.withSizeKeepingCentre(juce::jmin(body.getWidth(), 640), 220);
+        g.setColour(p.ink);
+        g.setFont(font(26.0f, Weight::SemiBold));
+        g.drawText(S("Låt gitarren låta som i en låt"), box.removeFromTop(40), juce::Justification::centred, false);
+        g.setColour(state_ == State::Failed ? p.danger : p.secondaryInk);
+        g.setFont(font(16.0f));
+        const auto text = state_ == State::Failed ? error_
+            : S("Välj en ljudfil från datorn. Appen lyssnar på klang, rum, bredd, dynamik och tempo "
+                "och föreslår ett preset som du sedan kan justera. Allt sker lokalt.");
+        g.drawFittedText(text, box.removeFromTop(90).reduced(20, 0), juce::Justification::centred, 3);
+        return;
+    }
+
+    if (state_ == State::Working) {
+        // Ring av streck som fylls med förloppet (samma formspråk som scenvyn).
+        const float d = juce::jmin(static_cast<float>(body.getHeight()) * 0.7f, 360.0f);
+        auto ring = body.toFloat().withSizeKeepingCentre(d, d).translated(0, -20);
+        const auto c = ring.getCentre();
+        constexpr int kTicks = 72;
+        const int lit = juce::roundToInt(progress_.load() * kTicks);
+        for (int i = 0; i < kTicks; ++i) {
+            const float ang = juce::MathConstants<float>::twoPi * static_cast<float>(i) / kTicks;
+            const bool on = i < lit;
+            const float r1 = d * 0.5f, r0 = r1 - (on ? d * 0.08f : d * 0.05f);
+            g.setColour(on ? p.ink : p.line);
+            g.drawLine(c.x + r0 * std::sin(ang), c.y - r0 * std::cos(ang), c.x + r1 * std::sin(ang), c.y - r1 * std::cos(ang), on ? 3.0f : 1.4f);
+        }
+        g.setColour(p.ink);
+        g.setFont(font(d * 0.22f, Weight::Light));
+        g.drawText(juce::String(juce::roundToInt(progress_.load() * 100.0f)), ring, juce::Justification::centred, false);
+        g.setColour(p.secondaryInk);
+        g.setFont(font(16.0f));
+        g.drawText(S("Analyserar ") + title_ + S("…"), ring.withY(ring.getBottom() + 18.0f).withHeight(24.0f).toNearestInt(),
+                   juce::Justification::centred, true);
+        return;
+    }
+
+    // Resultat: titel och tempo, sedan fyra rutor i rutnätet.
+    const auto& a = result_;
+    auto top = body.removeFromTop(110);
+    g.setColour(p.ink);
+    g.setFont(font(34.0f, Weight::Bold));
+    g.drawText(title_, top.removeFromTop(48), juce::Justification::bottomLeft, true);
+    g.setColour(p.secondaryInk);
+    g.setFont(font(16.0f));
+    g.drawText((a.bpm > 0 ? juce::String(juce::roundToInt(a.bpm)) + S(" BPM  ·  ") : juce::String())
+               + juce::String(juce::roundToInt(a.seconds / 60.0f)) + S(" min  ·  Förslag på preset – justera med öronen"),
+               top, juce::Justification::topLeft, true);
+
+    const int gap = kGridGap;
+    const int w = (body.getWidth() - gap * (kGridColumns - 1)) / kGridColumns;
+    const int h = juce::jmin(body.getHeight() - 70, 300);
+    struct Tile { const char* caption; juce::String value; juce::String unit; std::string text; };
+    const Tile tiles[4] = {
+        { "Klang", minusSign((a.lowGainDb >= 0 ? "+" : "") + juce::String(a.lowGainDb, 1).replaceCharacter('.', ',')), S("dB bas"), a.toneText },
+        { "Rum", juce::String(a.reverbDecaySec, 1).replaceCharacter('.', ','), S("s efterklang"), a.roomText },
+        { "Bredd", juce::String(juce::roundToInt(a.width * 100.0f)), S("%"), a.widthText },
+        { "Dynamik", juce::String(juce::roundToInt(a.loudnessRangeDb)), S("dB spridning"), a.dynamicsText },
+    };
+    for (int i = 0; i < 4; ++i) {
+        auto r = juce::Rectangle<int>(body.getX() + i * (w + gap), body.getY(), w, h);
+        drawTile(g, r.toFloat(), 18.0f, p.tile);
+        auto inner = r.reduced(20, 18);
+        drawCaption(g, S(tiles[i].caption), inner.removeFromTop(18), p.secondaryInk);
+        inner.removeFromTop(10);
+        auto valueRow = inner.removeFromTop(64);
+        g.setColour(p.ink);
+        const auto vf = font(54.0f, Weight::Light);
+        g.setFont(vf);
+        g.drawText(tiles[i].value, valueRow, juce::Justification::bottomLeft, false);
+        g.setColour(p.secondaryInk);
+        g.setFont(font(14.0f));
+        g.drawText(tiles[i].unit, valueRow.withTrimmedLeft(static_cast<int>(textWidth(vf, tiles[i].value)) + 8).withTrimmedBottom(10),
+                   juce::Justification::bottomLeft, true);
+        inner.removeFromTop(14);
+        g.setColour(p.ink);
+        g.setFont(font(14.5f));
+        g.drawFittedText(u8(tiles[i].text), inner, juce::Justification::topLeft, 6);
+    }
+}
+
+void AnalysisView::resized() {
+    auto r = getLocalBounds();
+    auto head = r.removeFromTop(60);
+    close_.setBounds(head.removeFromRight(110).withSizeKeepingCentre(110, 48));
+    head.removeFromRight(10);
+    if (state_ == State::Done) {
+        choose_.setBounds(head.removeFromRight(170).withSizeKeepingCentre(170, 48));
+    }
+    r.removeFromTop(24);
+    body_ = r;
+    if (state_ == State::Done) {
+        auto row = r.removeFromBottom(56);
+        create_.setBounds(row.removeFromLeft(200));
+    } else if (state_ != State::Working) {
+        choose_.setBounds(r.withSizeKeepingCentre(220, 56).translated(0, 120));
+    }
+    choose_.setVisible(state_ != State::Working);
+}
+
 // ---------------------------------------------------------------------------
 // HeaderBar
 // ---------------------------------------------------------------------------
 HeaderBar::HeaderBar() {
     input.setTooltip(S("Ingång, utgång och nivåer"));
     tune.setTooltip(S("Stämapparat (T)"));
+    analyse.setTooltip(S("Analysera en låt och skapa ett preset"));
     addAndMakeVisible(tune);
+    addAndMakeVisible(analyse);
     addAndMakeVisible(input);
     addAndMakeVisible(more);
 }
@@ -935,6 +1133,8 @@ void HeaderBar::resized() {
     input.setBounds(r.removeFromRight(178).withSizeKeepingCentre(178, 48));
     r.removeFromRight(10);
     tune.setBounds(r.removeFromRight(100).withSizeKeepingCentre(100, 48));
+    r.removeFromRight(10);
+    analyse.setBounds(r.removeFromRight(160).withSizeKeepingCentre(160, 48));
 }
 
 } // namespace ui

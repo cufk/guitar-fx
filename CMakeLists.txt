@@ -29,6 +29,7 @@ add_library(gfx_core STATIC
     engine/EffectChain.cpp
     engine/Engine.cpp
     engine/Rig.cpp
+    engine/SongAnalyzer.cpp
     dsp/effects/Cabinet.cpp
 )
 target_include_directories(gfx_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

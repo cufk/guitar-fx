@@ -13,6 +13,7 @@
 #include "dsp/effects/Sustain.h"
 #include "dsp/effects/Widener.h"
 #include "engine/Rig.h"
+#include "engine/SongAnalyzer.h"
 #include "dsp/effects/Flanger.h"
 #include "dsp/effects/Reverb.h"
 #include "dsp/effects/Distortion.h"
@@ -1174,6 +1175,124 @@ int main() {
         float peak = 0.0f;
         for (float v : t.l) peak = std::max(peak, std::fabs(v));
         CHECK(peak > 0.25f);
+    });
+
+
+    // ----------------------------------------------------------------- Låtanalys
+    // Syntetisk "låt": plockade toner (grundton + övertoner, exponentiell avklingning) i ett tempo.
+    auto makeSong = [](float bpm, float noteDecaySec, int seconds, unsigned seed) {
+        std::mt19937 rng(seed);
+        const float notes[6] = { 110.0f, 146.83f, 196.0f, 246.94f, 164.81f, 220.0f };
+        const int n = int(kSr) * seconds;
+        std::vector<float> x(size_t(n), 0.0f);
+        const int beat = int(kSr * 60.0 / bpm);
+        int k = 0;
+        for (int t = 0; t < n; t += beat, ++k) {
+            const float f = notes[k % 6];
+            const float amp = 0.25f + 0.05f * float(rng() % 3);
+            const int len = std::min(n - t, int(kSr * 3.0));
+            for (int i = 0; i < len; ++i) {
+                const float env = amp * std::exp(-float(i) / float(kSr) * 6.9f / noteDecaySec);
+                float v = 0.0f;
+                for (int h = 1; h <= 5; ++h) v += std::sin(2.0f * 3.14159265f * f * h * float(i) / float(kSr)) / float(h);
+                x[size_t(t + i)] += env * v;
+            }
+        }
+        return x;
+    };
+
+    run("Låtanalys: tempo hittas (90 och 128 BPM)", [&] {
+        for (float bpm : { 90.0f, 128.0f }) {
+            auto x = makeSong(bpm, 0.4f, 30, 1);
+            const auto a = gfx::analyseSong(x.data(), nullptr, int(x.size()), kSr);
+            std::printf("       %.0f BPM -> %.1f BPM\n", bpm, a.bpm);
+            CHECK(a.valid);
+            CHECK(std::fabs(a.bpm - bpm) < 2.5f);
+        }
+    });
+
+    run("Låtanalys: mer rum i låten ger längre efterklang och mer mix", [&] {
+        auto dry = makeSong(100.0f, 0.3f, 30, 2);
+        auto wet = dry;
+        gfx::Reverb r;
+        r.decaySec.set(3.5f); r.mix.set(0.6f); r.predelayMs.set(0.0f);
+        r.prepare({ kSr, kBlock, 2 });
+        std::vector<float> wr = wet;
+        for (int start = 0; start < int(wet.size()); start += kBlock) {
+            const int len = std::min(kBlock, int(wet.size()) - start);
+            float* p[2] = { wet.data() + start, wr.data() + start };
+            r.process({ p, 2, len });
+        }
+        const auto a = gfx::analyseSong(dry.data(), nullptr, int(dry.size()), kSr);
+        const auto b = gfx::analyseSong(wet.data(), wr.data(), int(wet.size()), kSr);
+        std::printf("       torr: %.2f s / %.0f %%, våt: %.2f s / %.0f %%\n", a.reverbDecaySec, a.reverbMix * 100, b.reverbDecaySec, b.reverbMix * 100);
+        CHECK(b.reverbDecaySec > a.reverbDecaySec * 1.5f);
+        CHECK(b.reverbMix > a.reverbMix + 0.05f);
+        CHECK(b.width > a.width);   // reverben gör också ljudet bredare
+    });
+
+    run("Låtanalys: bredd – mono är smalt, okorrelerat stereo är brett", [&] {
+        auto l = makeSong(100.0f, 0.5f, 20, 3);
+        auto r2 = makeSong(100.0f, 0.5f, 20, 4);
+        std::mt19937 rng(5);
+        std::normal_distribution<float> nd(0.0f, 0.05f);
+        for (size_t i = 0; i < r2.size(); ++i) r2[i] = 0.3f * l[i] + nd(rng);   // delvis korrelerad, mycket sidosignal
+        const auto mono = gfx::analyseSong(l.data(), l.data(), int(l.size()), kSr);
+        const auto wide = gfx::analyseSong(l.data(), r2.data(), int(l.size()), kSr);
+        CHECK(mono.width < 0.05f);
+        CHECK(wide.width > 0.6f);
+    });
+
+    run("Låtanalys: klang – basrik låt ger basförslag, mörk låt ger diskantsänkning", [&] {
+        auto base = makeSong(100.0f, 0.6f, 20, 6);
+        std::mt19937 rng(7);
+        std::normal_distribution<float> nd(0.0f, 0.03f);
+        for (auto& v : base) v += nd(rng);   // lite brus så att hela spektrumet har innehåll
+        auto colour = [&](float lowDb, float highDb) {
+            gfx::Eq q;
+            q.lowCutHz.set(20.0f); q.lowGainDb.set(lowDb); q.highGainDb.set(highDb);
+            q.prepare({ kSr, kBlock, 1 });
+            auto y = base;
+            for (int start = 0; start < int(y.size()); start += kBlock) {
+                float* p[1] = { y.data() + start };
+                q.process({ p, 1, std::min(kBlock, int(y.size()) - start) });
+            }
+            return gfx::analyseSong(y.data(), nullptr, int(y.size()), kSr);
+        };
+        const auto neutral = colour(0.0f, 0.0f), bassy = colour(10.0f, 0.0f), dark = colour(0.0f, -10.0f);
+        std::printf("       bas: %.1f -> %.1f dB, diskant: %.1f -> %.1f dB\n", neutral.lowGainDb, bassy.lowGainDb, neutral.highGainDb, dark.highGainDb);
+        CHECK(bassy.lowGainDb > neutral.lowGainDb + 1.5f);
+        CHECK(dark.highGainDb < neutral.highGainDb - 1.5f);
+    });
+
+    run("Låtanalys: komprimerad låt föreslår sustain, dynamisk gör det inte", [&] {
+        auto dyn = makeSong(100.0f, 0.5f, 30, 8);
+        // Dynamisk: växla mellan starka och svaga partier (var 4:e sekund).
+        for (size_t i = 0; i < dyn.size(); ++i) dyn[i] *= ((i / size_t(kSr * 4)) % 2) ? 1.0f : 0.15f;
+        auto comp = makeSong(100.0f, 2.5f, 30, 8);   // lång ton, jämn nivå
+        gfx::Sustain c;
+        c.amount.set(1.0f);
+        c.prepare({ kSr, kBlock, 1 });
+        for (int start = 0; start < int(comp.size()); start += kBlock) {
+            float* p[1] = { comp.data() + start };
+            c.process({ p, 1, std::min(kBlock, int(comp.size()) - start) });
+        }
+        const auto a = gfx::analyseSong(dyn.data(), nullptr, int(dyn.size()), kSr);
+        const auto b = gfx::analyseSong(comp.data(), nullptr, int(comp.size()), kSr);
+        std::printf("       dynamisk: %.1f dB (%.2f), komprimerad: %.1f dB (%.2f)\n", a.loudnessRangeDb, a.compression, b.loudnessRangeDb, b.compression);
+        CHECK(b.compression > a.compression + 0.3f);
+        CHECK(a.compression < 0.3f);
+    });
+
+    run("Låtanalys: för kort fil, tystnad och avbrott hanteras", [&] {
+        std::vector<float> shortClip(size_t(kSr), 0.1f);
+        CHECK(!gfx::analyseSong(shortClip.data(), nullptr, int(shortClip.size()), kSr).valid);
+        std::vector<float> silence(size_t(kSr * 10), 0.0f);
+        const auto s = gfx::analyseSong(silence.data(), nullptr, int(silence.size()), kSr);
+        CHECK(std::isfinite(s.lowGainDb) && std::isfinite(s.reverbDecaySec) && std::isfinite(s.bpm));
+        auto song = makeSong(100.0f, 0.5f, 20, 9);
+        const auto cancelled = gfx::analyseSong(song.data(), nullptr, int(song.size()), kSr, [](float p) { return p < 0.3f; });
+        CHECK(!cancelled.valid);
     });
 
     std::printf("\n%s (%d fel)\n", gFailures == 0 ? "ALLA TESTER OK" : "TESTER MISSLYCKADES", gFailures);
