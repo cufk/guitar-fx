@@ -1,10 +1,10 @@
 #pragma once
 // Stagebox – scen-GUI, monokromt:
-//   sidhuvud  – appens namn, låtanalys, ingång/utgång (popover), meny
+//   sidhuvud  – appens namn och ⋯ (alla inställningar: ingång/utgång, ljud, latens, …)
 //   stämfält  – lågt fält längst ned, alltid synligt (Mute = T)
 //   vänster   – ring av streck (utnivå) runt aktivt presetnummer, namn, bläddring, mätare
 //   höger     – effekterna som rutor + vald effekt med runda rattar
-//   nederst   – presets som piller (ett i taget, igen = grundljud)
+//   nederst   – presets som piller + låtanalys och nytt preset (ett i taget, igen = grundljud)
 // Tangenter: 1–9 = preset, 0/Esc = grundljud, ←/→ = föregående/nästa, T = Mute (stämning).
 
 #include <juce_audio_processors/juce_audio_processors.h>
@@ -27,6 +27,7 @@ private:
     void timerCallback() override;
     void applyAppearance(bool force);
     void showMoreMenu();
+    void showInputPanel();
     void setAnalysisOpen(bool open);
     void startLatencyMeasurement();
     void exportPresets();

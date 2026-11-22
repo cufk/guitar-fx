@@ -39,10 +39,14 @@ void IconButton::paintButton(juce::Graphics& g, bool over, bool down) {
     const float d = juce::jmin(r.getWidth(), r.getHeight()) - 2.0f;
     auto circle = r.withSizeKeepingCentre(d, d);
     if (filled_ || over || down) {
-        g.setColour(down ? p.tileStrong : (filled_ ? (over ? p.tileStrong : p.tile) : p.tile));
+        g.setColour(getToggleState() ? p.ink : down ? p.tileStrong : (filled_ ? (over ? p.tileStrong : p.tile) : p.tile));
+        g.fillEllipse(circle);
+    } else if (getToggleState()) {
+        g.setColour(p.ink);
         g.fillEllipse(circle);
     }
-    icons::draw(g, symbol_, circle.reduced(d * 0.3f), isEnabled() ? p.ink : p.tertiaryInk, juce::jmax(1.6f, d * 0.045f));
+    const auto ink = !isEnabled() ? p.tertiaryInk : getToggleState() ? p.inkInverse : p.ink;
+    icons::draw(g, symbol_, circle.reduced(d * 0.3f), ink, juce::jmax(1.6f, d * 0.045f));
 }
 
 // ---------------------------------------------------------------------------
@@ -475,6 +479,7 @@ PresetBar::PresetBar(GuitarFXProcessor& proc) : proc_(proc) {
         rename(i);
     };
     addAndMakeVisible(add_);
+    addAndMakeVisible(analyse);
     refresh();
 }
 
@@ -518,6 +523,8 @@ void PresetBar::paint(juce::Graphics&) {}
 void PresetBar::resized() {
     auto r = getLocalBounds();
     add_.setBounds(r.removeFromRight(r.getHeight()));
+    r.removeFromRight(10);
+    analyse.setBounds(r.removeFromRight(r.getHeight()));
     r.removeFromRight(12);
     if (pills_.empty()) return;
     const auto f = font(15.0f, Weight::SemiBold);
@@ -1162,15 +1169,7 @@ void AnalysisView::resized() {
 // HeaderBar
 // ---------------------------------------------------------------------------
 HeaderBar::HeaderBar() {
-    input.setTooltip(S("Ingång, utgång och nivåer"));
-    analyse.setTooltip(S("Analysera en låt och skapa ett preset"));
-    addAndMakeVisible(analyse);
-    addAndMakeVisible(input);
     addAndMakeVisible(more);
-}
-
-void HeaderBar::setSourceText(const juce::String& sourceText) {
-    if (input.getButtonText() != sourceText) input.setButtonText(sourceText);
 }
 
 void HeaderBar::paint(juce::Graphics& g) {
@@ -1181,12 +1180,7 @@ void HeaderBar::paint(juce::Graphics& g) {
 }
 
 void HeaderBar::resized() {
-    auto r = getLocalBounds();
-    more.setBounds(r.removeFromRight(48).withSizeKeepingCentre(48, 48));
-    r.removeFromRight(10);
-    input.setBounds(r.removeFromRight(178).withSizeKeepingCentre(178, 48));
-    r.removeFromRight(10);
-    analyse.setBounds(r.removeFromRight(160).withSizeKeepingCentre(160, 48));
+    more.setBounds(getLocalBounds().removeFromRight(48).withSizeKeepingCentre(48, 48));
 }
 
 } // namespace ui

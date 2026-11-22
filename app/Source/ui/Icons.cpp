@@ -124,6 +124,16 @@ void draw(juce::Graphics& g, Symbol s, juce::Rectangle<float> r, juce::Colour c,
             }
             break;
         }
+        case Symbol::Waveform: {
+            // Ljudvåg (staplar av olika höjd) – för låtanalys.
+            const float h[5] = { 0.35f, 0.75f, 1.0f, 0.6f, 0.3f };
+            for (int i = 0; i < 5; ++i) {
+                const float x = ctr.x + (static_cast<float>(i) - 2.0f) * k * 0.36f;
+                p.startNewSubPath(x, ctr.y - h[i] * k * 0.62f);
+                p.lineTo(x, ctr.y + h[i] * k * 0.62f);
+            }
+            break;
+        }
         case Symbol::Speaker:
             p.startNewSubPath(ctr.x - k * 0.6f, ctr.y - k * 0.2f); p.lineTo(ctr.x - k * 0.3f, ctr.y - k * 0.2f);
             p.lineTo(ctr.x + k * 0.05f, ctr.y - k * 0.55f); p.lineTo(ctr.x + k * 0.05f, ctr.y + k * 0.55f);

@@ -128,7 +128,7 @@ byggs i stället ett litet ALSA/JACK-värdprogram runt `gfx::Engine`.
 | Mikrofon mot gitarren | 1 (XLR) | INST av, 48V på om kondensatormikrofon |
 | Gitarrens inbyggda mikrofon | 2 (teleplugg) | INST på (passiv mikrofon) |
 
-Välj **Källa** i panelen INGÅNG:
+Öppna **⋯ → Ingång och utgång…** och välj **Källa**:
 - **Ingång 1** eller **Ingång 2** – bara en av dem.
 - **Blanda 1 + 2** – båda. Den inbyggda ger stabilitet mot rundgång, mikrofonen ger luft.
   1. Ställ gain på Scarletten så att IN 1 och IN 2 ligger ungefär lika (gult vid hårt anslag).
@@ -171,7 +171,9 @@ längst ned och ställ in EQ och de effekter som alltid ska vara på (t.ex. ett 
 - Reglaget till höger om effektens namn slår på/av den.
 - Vänster spalt visar aktivt preset (stort nummer och namn), utnivån som en ring av streck
   och ← / → för att bläddra.
-- **Ingång 1** uppe till höger öppnar ingång, utgång och nivåer.
+- Alla inställningar finns under **⋯** uppe till höger: ingång och utgång, ljudinställningar,
+  latensmätning, export/import av presets och utseende.
+- Ikonen med ljudvågen bredvid **+** längst ned öppnar låtanalysen.
 
 **Ett preset** är en eller flera effekter med egna inställningar:
 1. Tryck **+** längst ned till höger och ge presetet ett namn.
@@ -205,7 +207,7 @@ Senast mottagna MIDI visas längst ned till höger.
 
 ## Låtanalys
 
-Tryck **Analysera låt** (eller ⋯ → Analysera låt…) och välj en ljudfil. Analysen tar
+Tryck på ikonen med ljudvågen bredvid **+** längst ned (eller ⋯ → Analysera låt…) och välj en ljudfil. Analysen tar
 någon sekund och sker helt lokalt – inget laddas upp och ingen modell laddas ner.
 
 | Område | Vad som mäts | Blir i presetet |

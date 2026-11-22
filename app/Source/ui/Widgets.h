@@ -143,6 +143,9 @@ private:
     GuitarFXProcessor& proc_;
     std::vector<std::unique_ptr<Pill>> pills_;   // 0 = grundljud
     IconButton add_ { icons::Symbol::Plus, "Nytt preset" };
+public:
+    IconButton analyse { icons::Symbol::Waveform, juce::String::fromUTF8("Analysera en låt och skapa ett preset") };
+private:
     uint64_t lastRevision_ = ~0ull;
     size_t lastCount_ = ~size_t(0);
     juce::uint32 downTime_ = 0;
@@ -231,16 +234,13 @@ private:
     juce::Rectangle<int> body_;
 };
 
-// Sidhuvud: appens namn, låtanalys, ingångspiller och meny.
+// Sidhuvud: appens namn och menyn (alla inställningar finns under ⋯).
 class HeaderBar final : public juce::Component {
 public:
     HeaderBar();
-    void setSourceText(const juce::String& sourceText);
     void paint(juce::Graphics&) override;
     void resized() override;
-    Pill input { juce::String::fromUTF8("Ingång 1"), false };
-    Pill analyse { juce::String::fromUTF8("Analysera låt"), false };
-    IconButton more { icons::Symbol::More, "Fler val", false };
+    IconButton more { icons::Symbol::More, juce::String::fromUTF8("Inställningar"), false };
 };
 
 } // namespace ui
