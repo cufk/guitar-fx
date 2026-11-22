@@ -168,10 +168,14 @@ private:
     std::vector<std::pair<juce::String, int>> captions_;
 };
 
-// Stämapparat som ett vågrätt fält över appen – alltid synlig och alltid igång.
-//   ton  |  skala −50 … +50 cent (tänt streck = avvikelse)  |  cent · Hz  |  E A D G B E  |  Tysta ut
+// Stämningar för stämapparaten (låg sträng först, MIDI-nummer). Tom lista = kromatisk.
+struct Tuning { const char* name; std::vector<int> strings; };
+const std::vector<Tuning>& tunings();
+
+// Stämapparat som ett lågt vågrätt fält längst ned – alltid synlig och alltid igång.
+//   ton  |  cent · Hz  |  skala −50 … +50 cent  |  strängar  |  stämning  |  A4  |  Mute
 // Läser den torra ingången via TunerTap och kör PitchDetector på GUI-tråden.
-// "Tysta ut" stänger av ljudet ut medan man stämmer; då blir hela fältet svart.
+// "Mute" stänger av ljudet ut medan man stämmer; då blir hela fältet svart.
 class TunerStrip final : public juce::Component, private juce::Timer {
 public:
     explicit TunerStrip(GuitarFXProcessor& proc);
@@ -185,9 +189,9 @@ private:
     gfx::PitchDetector detector_;
     std::vector<float> window_;
     double preparedRate_ = 0.0;
-    Pill mute_ { "Tysta ut" };
+    Pill mute_ { "Mute" };
+    Pill tuning_ { "Standard", false };
     Pill reference_ { "440 Hz", false };
-    float referenceA4_ = 440.0f;
     float hz_ = 0.0f, cents_ = 0.0f, shownCents_ = 0.0f;
     int midi_ = 0, holdTicks_ = 0, nearest_ = -1;
     std::vector<float> recent_;
@@ -227,18 +231,16 @@ private:
     juce::Rectangle<int> body_;
 };
 
-// Sidhuvud: stor rubrik med aktivt läge, ingångspiller och meny.
+// Sidhuvud: appens namn, låtanalys, ingångspiller och meny.
 class HeaderBar final : public juce::Component {
 public:
     HeaderBar();
-    void setTexts(const juce::String& subtitle, const juce::String& sourceText);
+    void setSourceText(const juce::String& sourceText);
     void paint(juce::Graphics&) override;
     void resized() override;
     Pill input { juce::String::fromUTF8("Ingång 1"), false };
     Pill analyse { juce::String::fromUTF8("Analysera låt"), false };
     IconButton more { icons::Symbol::More, "Fler val", false };
-private:
-    juce::String subtitle_;
 };
 
 } // namespace ui

@@ -29,8 +29,8 @@ GuitarFXEditor::GuitarFXEditor(GuitarFXProcessor& p)
 
     setWantsKeyboardFocus(true);
     setResizable(true, true);
-    setResizeLimits(1040, 800, 2600, 1800);
-    setSize(1320, 960);
+    setResizeLimits(1040, 780, 2600, 1800);
+    setSize(1320, 920);
     startTimerHz(30);
 }
 
@@ -75,12 +75,8 @@ void GuitarFXEditor::timerCallback() {
     panel_.refresh();
     presets_.refresh();
 
-    auto& rig = processor_.rig();
-    juce::String subtitle = rig.activePreset() < 0 ? S("Grundljud – inget preset aktivt")
-                          : S("Preset ") + juce::String(rig.activePreset() + 1) + S(" – ") + ui::u8(rig.activeName());
-    if (e.monoOutput.load()) subtitle << S(" · Mono ut");
     const int mode = e.input().mode.load();
-    header_.setTexts(subtitle, mode == 2 ? S("Blanda 1 + 2") : mode == 1 ? S("Ingång 2") : S("Ingång 1"));
+    header_.setSourceText(mode == 2 ? S("Blanda 1 + 2") : mode == 1 ? S("Ingång 2") : S("Ingång 1"));
 
     // Watchdog: har ljudmotorn levererat nya block sedan förra kollen?
     const auto blocks = e.processedBlocks();
@@ -108,7 +104,7 @@ void GuitarFXEditor::paintOverChildren(juce::Graphics& g) {
     if (stalledTicks_ <= 15) return; // ~0,5 s utan nya ljudblock
     const auto text = S("Inget ljud från motorn – kontrollera ljudkortet");
     const int w = static_cast<int>(juce::GlyphArrangement::getStringWidth(ui::font(15.0f, ui::Weight::SemiBold), text)) + 56;
-    auto r = juce::Rectangle<int>(w, 44).withCentre({ getWidth() / 2, header_.getY() + 28 });
+    auto r = juce::Rectangle<int>(w, 44).withCentre({ getWidth() / 2, header_.getBounds().getCentreY() });
     ui::drawTile(g, r.toFloat(), 22.0f, ui::palette().danger);
     g.setColour(juce::Colours::white);
     g.fillEllipse(r.getX() + 18.0f, r.getCentreY() - 4.0f, 8.0f, 8.0f);
@@ -118,12 +114,12 @@ void GuitarFXEditor::paintOverChildren(juce::Graphics& g) {
 
 void GuitarFXEditor::resized() {
     auto r = getLocalBounds().reduced(ui::size::page, 0);
-    r.removeFromTop(28);
-    header_.setBounds(r.removeFromTop(84));
-    r.removeFromTop(16);
-    tuner_.setBounds(r.removeFromTop(84));
     r.removeFromTop(24);
-    r.removeFromBottom(28);
+    header_.setBounds(r.removeFromTop(56));
+    r.removeFromTop(24);
+    r.removeFromBottom(20);
+    tuner_.setBounds(r.removeFromBottom(60));      // stämapparaten längst ned
+    r.removeFromBottom(14);
     presets_.setBounds(r.removeFromBottom(56));
     r.removeFromBottom(28);
     stage_.setBounds(r.removeFromLeft(juce::jlimit(340, 520, r.getWidth() * 34 / 100)));
@@ -174,7 +170,7 @@ void GuitarFXEditor::showMoreMenu() {
     help.addItem(30, S("Tangenter: 1–9, 0/Esc, ←/→"), false);
     help.addItem(31, S("MIDI Program Change 0–8 = preset 1–9"), false);
     help.addItem(32, S("MIDI CC 102/103 = föregående/nästa, 104 = grundljud"), false);
-    help.addItem(33, S("T eller MIDI CC 105 = tysta ut (stämning)"), false);
+    help.addItem(33, S("T eller MIDI CC 105 = Mute (stämning)"), false);
     m.addSubMenu(S("Fotswitch och tangenter"), help);
     juce::Component::SafePointer<GuitarFXEditor> safe(this);
     m.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&header_.more).withMinimumWidth(240), [safe](int r) {
@@ -209,7 +205,7 @@ void GuitarFXEditor::startLatencyMeasurement() {
 
 void GuitarFXEditor::exportPresets() {
     chooser_ = std::make_unique<juce::FileChooser>(S("Exportera presets"),
-        juce::File::getSpecialLocation(juce::File::userDocumentsDirectory).getChildFile("GuitarFX-presets.json"), "*.json");
+        juce::File::getSpecialLocation(juce::File::userDocumentsDirectory).getChildFile("Stagebox-presets.json"), "*.json");
     chooser_->launchAsync(juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::warnAboutOverwriting,
                           [this](const juce::FileChooser& fc) {
                               const auto f = fc.getResult();
@@ -227,6 +223,6 @@ void GuitarFXEditor::importPresets() {
                               if (f == juce::File()) return;
                               if (!processor_.rigFromJson(juce::JSON::parse(f)))
                                   juce::AlertWindow::showAsync(juce::MessageBoxOptions().withTitle(S("Kunde inte importera"))
-                                      .withMessage(S("Filen är inte en GuitarFX-presetfil.")).withButton("OK", 0), nullptr);
+                                      .withMessage(S("Filen är inte en Stagebox-presetfil.")).withButton("OK", 0), nullptr);
                           });
 }

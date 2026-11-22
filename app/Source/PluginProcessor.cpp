@@ -311,6 +311,8 @@ void GuitarFXProcessor::getStateInformation(juce::MemoryBlock& destData) {
     state.setProperty("outputGainDb", engine_.outputGain().gainDb.get(), nullptr);
     state.setProperty("monoOutput",   engine_.monoOutput.load(), nullptr);
     state.setProperty("appearance",   appearance.load(), nullptr);
+    state.setProperty("tuning",       tuning.load(), nullptr);
+    state.setProperty("referenceA4",  referenceA4.load(), nullptr);
     state.setProperty("cabIr",        irFile_.getFullPathName(), nullptr);
     state.setProperty("rig",          juce::JSON::toString(rigToJson(), true), nullptr);
     juce::MemoryOutputStream stream(destData, false);
@@ -332,6 +334,8 @@ void GuitarFXProcessor::setStateInformation(const void* data, int sizeInBytes) {
     engine_.outputGain().gainDb.set(f("outputGainDb", 0.0f));
     engine_.monoOutput.store(static_cast<bool>(state.getProperty("monoOutput", false)));
     appearance.store(juce::jlimit(0, 2, static_cast<int>(state.getProperty("appearance", 0))));
+    tuning.store(juce::jmax(0, static_cast<int>(state.getProperty("tuning", 0))));
+    referenceA4.store(juce::jlimit(420.0f, 460.0f, static_cast<float>(state.getProperty("referenceA4", 440.0f))));
 
     const juce::String ir = state.getProperty("cabIr", "").toString();
     if (ir.isNotEmpty() && juce::File(ir).existsAsFile()) loadImpulseResponse(juce::File(ir));

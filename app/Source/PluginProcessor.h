@@ -31,7 +31,7 @@ public:
     juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override { return true; }
 
-    const juce::String getName() const override { return "GuitarFX"; }
+    const juce::String getName() const override { return "Stagebox"; }
     bool acceptsMidi() const override  { return true; }
     bool producesMidi() const override { return false; }
     double getTailLengthSeconds() const override { return 10.0; } // reverb (max efterklang)
@@ -68,6 +68,9 @@ public:
 
     // Utseende: 0 = följ systemet, 1 = ljust, 2 = mörkt (sparas i state).
     std::atomic<int> appearance { 0 };
+    // Stämapparat: vald stämning (index i ui::tunings()) och referens A4 (sparas i state).
+    std::atomic<int> tuning { 0 };
+    std::atomic<float> referenceA4 { 440.0f };
 
 private:
     void timerCallback() override;

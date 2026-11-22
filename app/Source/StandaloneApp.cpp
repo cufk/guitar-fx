@@ -44,20 +44,28 @@ private:
     juce::StandalonePluginHolder& holder_;
 };
 
-class GuitarFXApp final : public juce::JUCEApplication {
+class StageboxApp final : public juce::JUCEApplication {
 public:
-    GuitarFXApp() {
+    StageboxApp() {
         juce::PropertiesFile::Options options;
-        options.applicationName     = "GuitarFX";
+        options.applicationName     = "Stagebox";
         options.filenameSuffix      = ".settings";
         options.osxLibrarySubFolder = "Application Support";
        #if JUCE_LINUX || JUCE_BSD
         options.folderName          = "~/.config";
        #endif
+        // Appen hette tidigare GuitarFX: flytta med presets och ljudinställningar första gången.
+        auto oldOptions = options;
+        oldOptions.applicationName = "GuitarFX";
+        const auto newFile = options.getDefaultFile(), oldFile = oldOptions.getDefaultFile();
+        if (!newFile.existsAsFile() && oldFile.existsAsFile()) {
+            newFile.getParentDirectory().createDirectory();
+            oldFile.copyFileTo(newFile);
+        }
         properties_.setStorageParameters(options);
     }
 
-    const juce::String getApplicationName() override    { return "GuitarFX"; }
+    const juce::String getApplicationName() override    { return "Stagebox"; }
     const juce::String getApplicationVersion() override { return JucePlugin_VersionString; }
     bool moreThanOneInstanceAllowed() override          { return false; }
 
@@ -101,7 +109,7 @@ private:
 } // namespace
 
 juce::JUCEApplicationBase* juce_CreateApplication();
-juce::JUCEApplicationBase* juce_CreateApplication() { return new GuitarFXApp(); }
+juce::JUCEApplicationBase* juce_CreateApplication() { return new StageboxApp(); }
 
 #if JUCE_IOS
 void* juce_GetIOSCustomDelegateClass();

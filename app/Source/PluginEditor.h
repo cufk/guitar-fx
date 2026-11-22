@@ -1,11 +1,11 @@
 #pragma once
-// Scen-GUI v4, monokromt:
-//   sidhuvud  – stor rubrik med aktivt läge, låtanalys, ingång/utgång (popover), meny
-//   stämfält  – stämapparat över hela bredden, alltid synlig (Tysta ut = T)
+// Stagebox – scen-GUI, monokromt:
+//   sidhuvud  – appens namn, låtanalys, ingång/utgång (popover), meny
+//   stämfält  – lågt fält längst ned, alltid synligt (Mute = T)
 //   vänster   – ring av streck (utnivå) runt aktivt presetnummer, namn, bläddring, mätare
 //   höger     – effekterna som rutor + vald effekt med runda rattar
 //   nederst   – presets som piller (ett i taget, igen = grundljud)
-// Tangenter: 1–9 = preset, 0/Esc = grundljud, ←/→ = föregående/nästa, T = tysta ut (stämning).
+// Tangenter: 1–9 = preset, 0/Esc = grundljud, ←/→ = föregående/nästa, T = Mute (stämning).
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "PluginProcessor.h"
