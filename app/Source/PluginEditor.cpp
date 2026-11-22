@@ -14,13 +14,8 @@ GuitarFXEditor::GuitarFXEditor(GuitarFXProcessor& p)
     // Menyer, dialoger och popovers ritas i egna fönster – ge dem samma tema.
     juce::LookAndFeel::setDefaultLookAndFeel(&lnf_);
 
-    header_.input.onClick = [this] {
-        auto panel = std::make_unique<ui::InputPanel>(processor_);
-        // Inuti fönstret (parent = this) så att panelen ärver temat.
-        juce::CallOutBox::launchAsynchronously(std::move(panel), getLocalArea(&header_, header_.input.getBounds()), this);
-    };
     header_.more.onClick = [this] { showMoreMenu(); };
-    header_.analyse.onClick = [this] { setAnalysisOpen(!analysisView_.isOpen()); };
+    presets_.analyse.onClick = [this] { setAnalysisOpen(!analysisView_.isOpen()); };
     analysisView_.onClose = [this] { setAnalysisOpen(false); };
 
     for (juce::Component* c : std::initializer_list<juce::Component*> { &header_, &tuner_, &stage_, &grid_, &panel_, &presets_ })
@@ -29,8 +24,8 @@ GuitarFXEditor::GuitarFXEditor(GuitarFXProcessor& p)
 
     setWantsKeyboardFocus(true);
     setResizable(true, true);
-    setResizeLimits(1040, 780, 2600, 1800);
-    setSize(1320, 920);
+    setResizeLimits(1040, 790, 2600, 1800);
+    setSize(1320, 930);
     startTimerHz(30);
 }
 
@@ -75,9 +70,6 @@ void GuitarFXEditor::timerCallback() {
     panel_.refresh();
     presets_.refresh();
 
-    const int mode = e.input().mode.load();
-    header_.setSourceText(mode == 2 ? S("Blanda 1 + 2") : mode == 1 ? S("Ingång 2") : S("Ingång 1"));
-
     // Watchdog: har ljudmotorn levererat nya block sedan förra kollen?
     const auto blocks = e.processedBlocks();
     const int before = stalledTicks_;
@@ -91,7 +83,7 @@ void GuitarFXEditor::timerCallback() {
 void GuitarFXEditor::setAnalysisOpen(bool open) {
     analysisView_.setOpen(open);
     if (open) analysisView_.toFront(false);
-    header_.analyse.setToggleState(open, juce::dontSendNotification);
+    presets_.analyse.setToggleState(open, juce::dontSendNotification);
 }
 
 
@@ -119,7 +111,7 @@ void GuitarFXEditor::resized() {
     r.removeFromTop(24);
     r.removeFromBottom(20);
     tuner_.setBounds(r.removeFromBottom(60));      // stämapparaten längst ned
-    r.removeFromBottom(14);
+    r.removeFromBottom(28);                        // luft ovanför stämapparaten
     presets_.setBounds(r.removeFromBottom(56));
     r.removeFromBottom(28);
     stage_.setBounds(r.removeFromLeft(juce::jlimit(340, 520, r.getWidth() * 34 / 100)));
@@ -150,9 +142,17 @@ bool GuitarFXEditor::keyPressed(const juce::KeyPress& k) {
     return false;
 }
 
+void GuitarFXEditor::showInputPanel() {
+    auto panel = std::make_unique<ui::InputPanel>(processor_);
+    // Inuti fönstret (parent = this) så att panelen ärver temat.
+    juce::CallOutBox::launchAsynchronously(std::move(panel), getLocalArea(&header_, header_.more.getBounds()), this);
+}
+
 void GuitarFXEditor::showMoreMenu() {
     juce::PopupMenu m;
     const bool standalone = juce::JUCEApplicationBase::isStandaloneApp();
+    const int mode = processor_.engine().input().mode.load();
+    m.addItem(6, S("Ingång och utgång…   ") + (mode == 2 ? S("Blanda 1 + 2") : mode == 1 ? S("Ingång 2") : S("Ingång 1")));
     if (standalone) m.addItem(1, S("Ljudinställningar…"));
     m.addItem(2, S("Mät latens…"));
     m.addItem(5, S("Analysera låt…"));
@@ -180,6 +180,7 @@ void GuitarFXEditor::showMoreMenu() {
         if (r == 3) safe->exportPresets();
         if (r == 4) safe->importPresets();
         if (r == 5) safe->setAnalysisOpen(true);
+        if (r == 6) safe->showInputPanel();
         if (r >= 20 && r <= 22) { safe->processor_.appearance.store(r - 20); safe->applyAppearance(true); }
     });
 }
