@@ -15,12 +15,20 @@ Driftsäkerhet live är huvudkravet. Svara på svenska.
 - Parametrar: `gfx::Parameter` (atomic) + `SmoothedValue` på ljudtråden.
 - Presets: `gfx::Rig` (engine/Rig.h) – grundljud + presets (ett i taget). Används bara från
   meddelandetråden; processorns timer kör `syncFromLive()` och MIDI-kommandon (50 Hz).
+  Ändringar sparas i det som är aktivt (en ändrad effekt tas automatiskt med i aktivt
+  preset). Klick på rad i setlistan = aktivera; tangent/MIDI samma igen = grundljud.
+  Setlistan (`SetlistPanel`, vänster) = presetordningen i Rig; dra för att ordna om,
+  högerklick/långt tryck = meny; Föregående/Nästa (och MIDI CC 102/103, ←/→) stegar.
+  Fristående appen autosparar state var 3:e sekund när något ändrats.
 - GUI: `app/Source/ui/` – monokromt formspråk (användarens inspiration: varm off-white,
   beige rutor, svarta runda rattar med ljus prick, stora fetstilta rubriker, tunna stora
   siffror; mörkt läge inverterar). Theme (palett, Inter-typsnitt, LookAndFeel inkl. ratt),
-  Icons (vektorikoner per effekt), Widgets (HeaderBar, StageView, EffectGrid, EffectPanel,
-  KnobTile, PresetBar, InputPanel, TunerStrip, AnalysisView). Ingen färg utom rött för varningar.
-  Rattar och effektrutor följer ett fast rutnät med fyra kolumner (`kGridColumns`).
+  Icons (vektorikoner per effekt), Widgets (HeaderBar, InputMeter, SetlistPanel, EffectGrid,
+  EffectPanel, KnobTile, InputPanel, TunerStrip, AnalysisView). InputMeter i sidhuvudet visar
+  bara de ingångar som används (IN 1 / IN 2 enligt ingångsläget). Status (CPU, limiter,
+  latens, MIDI) ligger i ⋯-menyn. Ingen färg utom rött för varningar.
+  Rattar och effektrutor följer ett fast rutnät med fyra kolumner (`kGridColumns`); alla
+  rattrutor har samma bredd och höjd oavsett antal rattar (ratten = 0,8 × rutans kortsida).
 - Stämapparat: lågt fält längst ned (`TunerStrip`), stämningar i `ui::tunings()`, valet och
   A4 sparas i processorns state. `engine/TunerTap.h` (ljudtråden kopierar torr ingång till
   ringbuffert; "Mute" gäller bara medan GUI:t är öppet) + `dsp/core/PitchDetector.h` (YIN).

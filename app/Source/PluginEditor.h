@@ -1,10 +1,9 @@
 #pragma once
 // Stagebox – scen-GUI, monokromt:
-//   sidhuvud  – appens namn och ⋯ (alla inställningar: ingång/utgång, ljud, latens, …)
+//   sidhuvud  – appens namn, signalindikator (bara använda ingångar) och ⋯ (alla inställningar)
 //   stämfält  – lågt fält längst ned, alltid synligt (Mute = T)
-//   vänster   – ring av streck (utnivå) runt aktivt presetnummer, namn, bläddring, mätare
+//   vänster   – setlist: grundljud + presets i spelordning (dra för att ordna, Föregående/Nästa)
 //   höger     – effekterna som rutor + vald effekt med runda rattar
-//   nederst   – presets som piller + låtanalys och nytt preset (ett i taget, igen = grundljud)
 // Tangenter: 1–9 = preset, 0/Esc = grundljud, ←/→ = föregående/nästa, T = Mute (stämning).
 
 #include <juce_audio_processors/juce_audio_processors.h>
@@ -37,10 +36,10 @@ private:
     GuitarFXProcessor& processor_;
     ui::LookAndFeel lnf_;
     ui::HeaderBar header_;
-    ui::StageView stage_;
+    ui::SetlistPanel setlist_;
+    ui::InputMeter meter_;
     ui::EffectGrid grid_;
     ui::EffectPanel panel_;
-    ui::PresetBar presets_;
     ui::TunerStrip tuner_;
     ui::AnalysisView analysisView_;
     juce::TooltipWindow tooltips_ { this, 700 };

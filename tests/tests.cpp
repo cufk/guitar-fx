@@ -954,21 +954,28 @@ int main() {
         rig.syncFromLive();
         CHECK(e.chain().isEnabled(chSlot));
 
-        // Ändra EQ medan Hall är aktivt -> går till grundljudet (EQ ingår inte i Hall).
+        // Ändra EQ medan Hall är aktivt -> EQ tas med i Hall; grundljudet rörs inte.
         eqp->lowGainDb.set(5.0f);
         rig.syncFromLive();
-        CHECK(rig.base().at("eq").values.at("low") == 5.0f);
+        CHECK(rig.activeIncludes("eq"));
+        CHECK(std::fabs(rig.base().at("eq").values.at("low") - 3.0f) < 1e-6f);
 
-        // Tillbaka till grundljudet: reverb som innan, chorus av, EQ behåller ändringen.
-        rig.select(hall); // samma igen => grundljud
+        // Tillbaka till grundljudet: reverb som innan, chorus av, EQ som i grundljudet.
+        rig.select(hall); // samma igen => grundljud (tangenter/fotswitch)
         CHECK(rig.activePreset() == -1);
         CHECK(std::fabs(rvp->mix.get() - 0.2f) < 1e-6f);
         CHECK(std::fabs(rvp->decaySec.get() - 2.0f) < 1e-6f);
         CHECK(!e.chain().isEnabled(chSlot));
-        CHECK(std::fabs(eqp->lowGainDb.get() - 5.0f) < 1e-6f);
+        CHECK(std::fabs(eqp->lowGainDb.get() - 3.0f) < 1e-6f);
 
-        // Aktivera Hall igen: dess värden kommer tillbaka.
+        // Ändring i grundljudet sparas där.
+        eqp->lowGainDb.set(4.0f);
+        rig.syncFromLive();
+        CHECK(std::fabs(rig.base().at("eq").values.at("low") - 4.0f) < 1e-6f);
+
+        // Aktivera Hall igen: dess värden kommer tillbaka (även EQ 5 dB).
         rig.select(hall);
+        CHECK(std::fabs(eqp->lowGainDb.get() - 5.0f) < 1e-6f);
         CHECK(std::fabs(rvp->mix.get() - 0.5f) < 1e-6f);
         CHECK(std::fabs(rvp->decaySec.get() - 5.0f) < 1e-6f);
         CHECK(e.chain().isEnabled(chSlot));
@@ -1328,6 +1335,47 @@ int main() {
         auto song = makeSong(100.0f, 0.5f, 20, 9);
         const auto cancelled = gfx::analyseSong(song.data(), nullptr, int(song.size()), kSr, [](float p) { return p < 0.3f; });
         CHECK(!cancelled.valid);
+    });
+
+
+    run("Rig: ändringar medan ett preset är aktivt sparas i presetet (utan att trycka I preset)", [] {
+        // Användarens flöde: skapa preset -> ställ in -> byt -> byt tillbaka.
+        gfx::Engine e;
+        auto rv = std::make_unique<gfx::Reverb>();
+        auto ch = std::make_unique<gfx::Chorus>();
+        auto* rvp = rv.get(); auto* chp = ch.get();
+        const int rvSlot = e.chain().add(std::move(rv), true);
+        const int chSlot = e.chain().add(std::move(ch), false);
+        gfx::Rig rig(e.chain());
+        rig.addEffect({ "reverb", "Reverb", 0, rvSlot, { { "mix", "Mix", "", &rvp->mix }, { "decay", "Efterklang", "s", &rvp->decaySec } }, {} });
+        rig.addEffect({ "chorus", "Chorus", 0, chSlot, { { "mix", "Mix", "", &chp->mix } }, {} });
+        rvp->mix.set(0.15f);
+        rig.initBaseFromLive();
+
+        const int a = rig.addPreset("Ballad");
+        rig.activate(a);
+        rvp->decaySec.set(4.0f); rvp->mix.set(0.4f);      // vrid på rattar
+        e.chain().setEnabled(chSlot, true);              // slå på chorus
+        rig.syncFromLive();
+
+        const int b = rig.addPreset("Rock");
+        rig.activate(b);
+        rvp->mix.set(0.05f);
+        rig.syncFromLive();
+
+        rig.activate(-1);                                // grundljud: oförändrat
+        CHECK(std::fabs(rvp->mix.get() - 0.15f) < 1e-6f);
+        CHECK(!e.chain().isEnabled(chSlot));
+
+        rig.activate(a);                                 // Ballad har sina inställningar
+        CHECK(std::fabs(rvp->decaySec.get() - 4.0f) < 1e-6f);
+        CHECK(std::fabs(rvp->mix.get() - 0.4f) < 1e-6f);
+        CHECK(e.chain().isEnabled(chSlot));
+        CHECK(rig.activeIncludes("reverb") && rig.activeIncludes("chorus"));
+
+        rig.activate(b);                                 // Rock har sina
+        CHECK(std::fabs(rvp->mix.get() - 0.05f) < 1e-6f);
+        CHECK(!e.chain().isEnabled(chSlot));             // chorus ingår inte i Rock -> grundljud (av)
     });
 
     std::printf("\n%s (%d fel)\n", gFailures == 0 ? "ALLA TESTER OK" : "TESTER MISSLYCKADES", gFailures);

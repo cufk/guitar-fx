@@ -44,7 +44,7 @@ private:
     juce::StandalonePluginHolder& holder_;
 };
 
-class StageboxApp final : public juce::JUCEApplication {
+class StageboxApp final : public juce::JUCEApplication, private juce::Timer {
 public:
     StageboxApp() {
         juce::PropertiesFile::Options options;
@@ -80,9 +80,23 @@ public:
         holder_->getMuteInputValue().setValue(false);
         window_ = std::make_unique<MainWindow>(getApplicationName(), *holder_);
         window_->setVisible(true);
+        startTimer(3000);   // autospara presets och inställningar
+    }
+
+    // Sparar presets/inställningar till disk när något har ändrats – så att inget går
+    // förlorat om appen tvångsavslutas eller datorn stängs av utan att appen avslutats.
+    void timerCallback() override {
+        if (holder_ == nullptr || holder_->processor == nullptr) return;
+        juce::MemoryBlock state;
+        holder_->processor->getStateInformation(state);
+        if (state == lastSaved_) return;
+        lastSaved_ = state;
+        holder_->savePluginState();
+        properties_.saveIfNeeded();
     }
 
     void shutdown() override {
+        stopTimer();
         if (holder_ != nullptr) { holder_->savePluginState(); holder_->saveAudioDeviceState(); }
         window_ = nullptr;
         holder_ = nullptr;
@@ -104,6 +118,7 @@ private:
     juce::ApplicationProperties properties_;
     std::unique_ptr<juce::StandalonePluginHolder> holder_;
     std::unique_ptr<MainWindow> window_;
+    juce::MemoryBlock lastSaved_;
 };
 
 } // namespace

@@ -68,11 +68,21 @@ void Rig::selectPrevious() {
 }
 
 void Rig::syncFromLive() {
+    // Det som ändras sparas i det som är aktivt: med ett preset aktivt tas en ändrad effekt
+    // automatiskt med i presetet (grundljudet rörs inte). Med grundljudet aktivt sparas där.
     for (const auto& e : effects_) {
-        auto* t = mutableTargetFor(e.id);
-        if (!t) continue;
         const auto live = liveState(e);
-        if (!(live == *t)) { *t = live; ++revision_; }
+        if (valid(active_)) {
+            auto& o = presets_[size_t(active_)].overrides;
+            if (auto it = o.find(e.id); it != o.end()) {
+                if (!(live == it->second)) { it->second = live; ++revision_; }
+                continue;
+            }
+            const auto b = base_.find(e.id);
+            if (b != base_.end() && !(live == b->second)) { o[e.id] = live; ++revision_; }
+            continue;
+        }
+        if (auto b = base_.find(e.id); b != base_.end() && !(live == b->second)) { b->second = live; ++revision_; }
     }
 }
 
