@@ -25,6 +25,30 @@ float levelNorm(float lvl) {
 juce::String minusSign(juce::String s) { return s.replaceCharacter('-', static_cast<juce::juce_wchar>(0x2212)); }
 } // namespace
 
+juce::File appDataDirectory() {
+    return juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory).getChildFile("Stagebox");
+}
+
+juce::File localCopyOf(const juce::FileChooser& fc, const juce::File& destDir) {
+    const auto url = fc.getURLResult();
+    if (url.isEmpty()) return {};
+   #if ! JUCE_IOS
+    if (url.isLocalFile()) return url.getLocalFile();
+   #endif
+    auto in = url.createInputStream(juce::URL::InputStreamOptions(juce::URL::ParameterHandling::inAddress));
+    if (in == nullptr) return {};
+    destDir.createDirectory();
+    auto name = juce::URL::removeEscapeChars(url.getFileName());
+    if (name.isEmpty()) name = "fil";
+    const auto dest = destDir.getChildFile(juce::File::createLegalFileName(name));
+    dest.deleteFile();
+    juce::FileOutputStream out(dest);
+    if (!out.openedOk()) return {};
+    out.writeFromInputStream(*in, -1);
+    out.flush();
+    return out.getStatus().wasOk() ? dest : juce::File();
+}
+
 void drawSectionHeading(juce::Graphics& g, juce::Rectangle<int> r, const juce::String& title, const juce::String& detail) {
     const auto& p = palette();
     const auto tf = font(22.0f, Weight::SemiBold);
@@ -407,7 +431,8 @@ EffectPanel::EffectPanel(GuitarFXProcessor& proc) : proc_(proc), filters_(proc) 
         chooser_ = std::make_unique<juce::FileChooser>(S("Välj kabinett-IR"), proc_.impulseResponseFile(), "*.wav;*.aif;*.aiff");
         chooser_->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
                               [this](const juce::FileChooser& fc) {
-                                  if (fc.getResult() != juce::File()) irStatus_ = proc_.loadImpulseResponse(fc.getResult());
+                                  const auto f = localCopyOf(fc, appDataDirectory().getChildFile("IR"));
+                                  if (f != juce::File()) irStatus_ = proc_.loadImpulseResponse(f);
                               });
     };
     builtInIr_->onClick = [this] { proc_.useBuiltInImpulseResponse(); irStatus_.clear(); };
@@ -1315,7 +1340,9 @@ void AnalysisView::chooseFile() {
     juce::Component::SafePointer<AnalysisView> safe(this);
     chooser_->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
                           [safe](const juce::FileChooser& fc) {
-                              if (safe && fc.getResult() != juce::File()) safe->start(fc.getResult());
+                              if (!safe) return;
+                              const auto f = localCopyOf(fc, juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("Stagebox-analys"));
+                              if (f != juce::File()) safe->start(f);
                           });
 }
 

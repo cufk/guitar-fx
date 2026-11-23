@@ -1,4 +1,5 @@
-# Bygger och testar Stagebox. På main (och vid taggar v*) byggs även Stagebox.app och en
+# Bygger och testar Stagebox. iPad-versionen byggs alltid (plus skärmdumpar i simulatorn).
+# På main (och vid taggar v*) byggs även Stagebox.app och en
 # .dmg på en Mac, som laddas upp som artefakt (Actions → körningen → Artifacts).
 name: Bygg
 
@@ -36,3 +37,23 @@ jobs:
           name: Stagebox-dmg
           path: dist/*.dmg
           if-no-files-found: error
+
+  ipad:
+    name: iPad (bygge + skärmdumpar i simulatorn)
+    runs-on: macos-latest
+    needs: tests
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bygg för iPad (osignerat – kontrollerar att allt kompilerar för riktig iPad)
+        run: |
+          cmake -B build-ios -G Xcode -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_DEPLOYMENT_TARGET=16.0
+          xcodebuild -project build-ios/Stagebox.xcodeproj -scheme Stagebox_Standalone -configuration Release \
+                     -sdk iphoneos -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO -quiet build
+      - name: Simulator och skärmdumpar
+        run: ./scripts/ipad-screenshots.sh
+      - name: Ladda upp skärmdumpar
+        uses: actions/upload-artifact@v4
+        with:
+          name: Stagebox-ipad-skarmdumpar
+          path: screenshots/*.png
+          if-no-files-found: warn

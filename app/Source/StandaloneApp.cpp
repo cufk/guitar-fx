@@ -1,4 +1,5 @@
 // Eget appfönster för den fristående appen (i stället för JUCE:s standardfönster).
+// På iPad: helskärm i liggande läge; sparar även när appen går till bakgrunden.
 //  - macOS egen titelrad, ingen "Options"-knapp och ingen gul "Audio input is muted"-rad
 //    (limitern skyddar utgången; ljudinställningar finns i appens ⋯-meny)
 //  - MIDI-ingångar (även Bluetooth-pedaler) öppnas automatiskt när de dyker upp
@@ -20,6 +21,13 @@ public:
     MainWindow(const juce::String& name, juce::StandalonePluginHolder& holder)
         : DocumentWindow(name, ui::palette().background, DocumentWindow::allButtons), holder_(holder) {
         setUsingNativeTitleBar(true);
+       #if JUCE_IOS
+        // iPad: helskärm (liggande, utan statusrad – se app/CMakeLists.txt).
+        setResizable(false, false);
+        if (auto* editor = holder.processor->createEditorAndMakeActive())
+            setContentOwned(editor, false);
+        setFullScreen(true);
+       #else
         setResizable(true, false);
         if (auto* editor = holder.processor->createEditorAndMakeActive()) {
             setContentOwned(editor, true);
@@ -31,10 +39,13 @@ public:
         const auto saved = holder.settings != nullptr ? holder.settings->getValue("windowBounds") : juce::String();
         if (saved.isNotEmpty()) restoreWindowStateFromString(saved);
         else centreWithSize(getWidth(), getHeight());
+       #endif
     }
 
     ~MainWindow() override {
+       #if ! JUCE_IOS
         if (holder_.settings != nullptr) holder_.settings->setValue("windowBounds", getWindowStateAsString());
+       #endif
         clearContentComponent();
     }
 
@@ -92,6 +103,12 @@ public:
         if (state == lastSaved_) return;
         lastSaved_ = state;
         holder_->savePluginState();
+        properties_.saveIfNeeded();
+    }
+
+    // iPad: appen kan stängas utan förvarning när den ligger i bakgrunden – spara när den lämnas.
+    void suspended() override {
+        if (holder_ != nullptr) { holder_->savePluginState(); holder_->saveAudioDeviceState(); }
         properties_.saveIfNeeded();
     }
 

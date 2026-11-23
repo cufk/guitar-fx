@@ -24,9 +24,15 @@ GuitarFXEditor::GuitarFXEditor(GuitarFXProcessor& p)
     addChildComponent(analysisView_);
 
     setWantsKeyboardFocus(true);
+   #if JUCE_IOS
+    // iPad: helskärm i liggande läge – fönstret bestämmer storleken (iPad mini: 1133 × 744).
+    setResizable(false, false);
+    setSize(1194, 834);
+   #else
     setResizable(true, true);
     setResizeLimits(1040, 790, 2600, 1800);
     setSize(1320, 900);
+   #endif
     startTimerHz(30);
 }
 
@@ -233,6 +239,14 @@ void GuitarFXEditor::startLatencyMeasurement() {
 }
 
 void GuitarFXEditor::exportPresets() {
+   #if JUCE_IOS
+    // iPad: filen skrivs först i appens mapp; Filer-appen kopierar den sedan dit man väljer.
+    const auto file = ui::appDataDirectory().getChildFile("Stagebox-presets.json");
+    file.getParentDirectory().createDirectory();
+    file.replaceWithText(juce::JSON::toString(processor_.rigToJson()));
+    chooser_ = std::make_unique<juce::FileChooser>(S("Exportera presets"), file, "*.json");
+    chooser_->launchAsync(juce::FileBrowserComponent::saveMode, [](const juce::FileChooser&) {});
+   #else
     chooser_ = std::make_unique<juce::FileChooser>(S("Exportera presets"),
         juce::File::getSpecialLocation(juce::File::userDocumentsDirectory).getChildFile("Stagebox-presets.json"), "*.json");
     chooser_->launchAsync(juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::warnAboutOverwriting,
@@ -241,6 +255,7 @@ void GuitarFXEditor::exportPresets() {
                               if (f == juce::File()) return;
                               f.replaceWithText(juce::JSON::toString(processor_.rigToJson()));
                           });
+   #endif
 }
 
 void GuitarFXEditor::importPresets() {
@@ -248,7 +263,7 @@ void GuitarFXEditor::importPresets() {
         juce::File::getSpecialLocation(juce::File::userDocumentsDirectory), "*.json");
     chooser_->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
                           [this](const juce::FileChooser& fc) {
-                              const auto f = fc.getResult();
+                              const auto f = ui::localCopyOf(fc, juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("Stagebox-import"));
                               if (f == juce::File()) return;
                               if (!processor_.rigFromJson(juce::JSON::parse(f)))
                                   juce::AlertWindow::showAsync(juce::MessageBoxOptions().withTitle(S("Kunde inte importera"))

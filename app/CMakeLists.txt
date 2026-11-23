@@ -45,6 +45,14 @@ juce_add_plugin(Stagebox
     MICROPHONE_PERMISSION_TEXT    "Stagebox behöver ljudingången för att ta emot gitarrsignalen."
     BACKGROUND_AUDIO_ENABLED      TRUE      # iOS: fortsätt spela om skärmen släcks
     REQUIRES_FULL_SCREEN          TRUE
+    # iPad: bara iPad (layouten är för liten för iPhone), liggande, helskärm. Exporterade
+    # presets syns i Filer-appen under "På min iPad > Stagebox".
+    TARGETED_DEVICE_FAMILY        2
+    IPAD_SCREEN_ORIENTATIONS      UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
+    IPHONE_SCREEN_ORIENTATIONS    UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
+    STATUS_BAR_HIDDEN             TRUE
+    FILE_SHARING_ENABLED          TRUE
+    DOCUMENT_BROWSER_ENABLED      FALSE
     COPY_PLUGIN_AFTER_BUILD       FALSE)
 
 # Inbäddade resurser: typsnitt (Inter, SIL Open Font License – se Resources/fonts/Inter-LICENSE.txt)

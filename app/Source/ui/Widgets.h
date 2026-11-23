@@ -21,6 +21,13 @@
 #include "../PluginProcessor.h"
 
 namespace ui {
+// Fil vald i en FileChooser som en läsbar lokal fil. På Mac: den valda filen. På iPad ger
+// Filer-appen bara en tillfällig URL – då kopieras innehållet till destDir (som skapas).
+// Tom File om inget valdes eller om läsningen misslyckades.
+juce::File localCopyOf(const juce::FileChooser& fc, const juce::File& destDir);
+// Appens egen datamapp (presets-export, kopierade IR:er m.m.).
+juce::File appDataDirectory();
+
 // Sektionsrubrik: "Setlist  1 av 3" – rubrik och en grå rad på samma baslinje.
 void drawSectionHeading(juce::Graphics& g, juce::Rectangle<int> r, const juce::String& title, const juce::String& detail);
 
