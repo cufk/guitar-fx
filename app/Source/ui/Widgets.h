@@ -2,12 +2,15 @@
 // GUI-komponenter i det monokroma formspråket. Allt läser och skriver motorn via
 // gfx::Parameter / EffectChain / Rig (meddelandetråden) – inget ljud här.
 //
-//   HeaderBar      stor rubrik, aktivt läge, ingångsknapp och meny
-//   StageView      ring av streck (utnivå) runt aktivt presetnummer, namn, bläddring, mätare
-//   EffectGrid     de åtta effekterna som rutor (välj vilken som visas)
-//   EffectPanel    vald effekt: på/av, "I preset" och runda rattar
-//   PresetBar      presets som piller längst ned
+//   HeaderBar      appens namn och ⋯ (alla inställningar)
+//   InputMeter     nivåmätare i sidhuvudet, bara använda ingångar
+//   SetlistPanel   grundljud + presets i spelordning, Föregående/Nästa
+//   EffectGrid     "Effekter": de åtta effekterna som rutor i signalordning (svart = på)
+//   EffectPanel    vald effekt: rubrik + status, "I presetet", på/av och lodräta reglage
 //   InputPanel     ingång/utgång/nivåer (popover)
+//   TunerStrip     stämapparat längst ned
+// Formspråk: rubriker 22 px på samma linje, knappar 44 px (små 34 px), rutor med radie 16–20.
+
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <atomic>
@@ -18,6 +21,9 @@
 #include "../PluginProcessor.h"
 
 namespace ui {
+// Sektionsrubrik: "Setlist  1 av 3" – rubrik och en grå rad på samma baslinje.
+void drawSectionHeading(juce::Graphics& g, juce::Rectangle<int> r, const juce::String& title, const juce::String& detail);
+
 
 // Rund knapp med symbol.
 class IconButton final : public juce::Button {
@@ -54,37 +60,42 @@ private:
     float pos_ = 0.0f;
 };
 
-// En ratt i en ruta: svart rund ratt, namn nere till vänster och värde till höger.
-// Dra uppåt/nedåt eller i sidled; dubbelklick återställer standardvärdet.
-// Val (choices) visas som staplade piller i stället för ratt.
+// Ett reglage i en ruta. Lodrätt (standard): spår som fyller rutans höjd, svart runt grepp,
+// namn och värde centrerat under. Runt (InputPanel): ratt med namn och värde under.
+// Dubbelklick återställer standardvärdet. Val (choices) visas som staplade piller.
 class KnobTile final : public juce::Component {
 public:
-    explicit KnobTile(const gfx::ParamSpec& spec);
+    explicit KnobTile(const gfx::ParamSpec& spec, bool vertical = true);
     void refresh();
     void paint(juce::Graphics&) override;
     void resized() override;
 private:
     gfx::ParamSpec spec_;
+    bool vertical_;
     juce::Slider knob_;
     std::vector<std::unique_ptr<Pill>> choices_;
 };
 
-// De åtta effekterna som rutor. Prick = på. Svart = vald (visas i EffectPanel).
+// "Effekter": de åtta effekterna som rutor i signalordning. Svart ruta = på.
+// Klick väljer vilken effekt som visas i EffectPanel (index = plats i rig.effects()).
 class EffectGrid final : public juce::Component {
 public:
     EffectGrid(GuitarFXProcessor& proc, std::function<void(int)> onSelect);
     void setSelected(int i) { selected_ = i; repaint(); }
+    static int preferredHeight() { return size::sectionHead + size::sectionGap + 2 * kTileH + kGridGap; }
     void refresh() { repaint(); }
     void paint(juce::Graphics&) override;
     void mouseUp(const juce::MouseEvent&) override;
     void mouseMove(const juce::MouseEvent&) override;
     void mouseExit(const juce::MouseEvent&) override { hover_ = -1; repaint(); }
 private:
-    juce::Rectangle<int> cell(int i) const;
-    int cellAt(juce::Point<int>) const;
+    juce::Rectangle<int> cell(int position) const;
+    int cellAt(juce::Point<int>) const;     // effektindex eller -1
     GuitarFXProcessor& proc_;
     std::function<void(int)> onSelect_;
+    std::vector<int> order_;                // visningsordning (effektindex sorterade efter plats i kedjan)
     int selected_ = 0, hover_ = -1;
+    static constexpr int kTileH = 84;
 };
 
 // Vald effekt: rubrik, status, "I preset", på/av och rattar.
@@ -99,12 +110,13 @@ private:
     GuitarFXProcessor& proc_;
     int index_ = -1;
     Switch switch_;
-    Pill presetPill_ { "I preset" };
+    Pill presetPill_ { "I presetet" };
     std::unique_ptr<Pill> loadIr_, builtInIr_;
     std::unique_ptr<juce::FileChooser> chooser_;
     juce::String irStatus_;
     std::vector<std::unique_ptr<KnobTile>> tiles_;
     float activity_ = 0.0f;
+    static constexpr int kHead = 12 + 1 + 15 + size::sectionHead;   // linje + luft + rubrikrad
 };
 
 // Setlist: grundljud + presets i spelordning. Tryck = aktivera, dra en rad = ändra ordning,
@@ -135,6 +147,7 @@ private:
     IconButton add_ { icons::Symbol::Plus, "Nytt preset" };
     Pill prev_ { juce::String::fromUTF8("‹  Föregående"), false };
     Pill next_ { juce::String::fromUTF8("Nästa  ›"), false };
+    juce::Rectangle<int> head_;
     juce::Rectangle<int> list_;
     int scroll_ = 0, hover_ = -2;
     int pressRow_ = -2, dragFrom_ = -1, dragTo_ = -1, dragY_ = 0;
@@ -145,10 +158,11 @@ private:
     static constexpr int kRowH = 60, kRowGap = 8;
 };
 
-// Kompakt signalindikator: bara de ingångar som används (IN 1, IN 2 eller båda vid Blanda).
+// Kompakt signalindikator i en rundad ruta: bara de ingångar som används
+// (IN 1, IN 2 eller båda bredvid varandra vid Blanda). Högerställd i sina gränser.
 class InputMeter final : public juce::Component {
 public:
-    explicit InputMeter(GuitarFXProcessor& proc) : proc_(proc) {}
+    explicit InputMeter(GuitarFXProcessor& proc) : proc_(proc) { setInterceptsMouseClicks(false, false); }
     void update();
     void paint(juce::Graphics&) override;
 private:
@@ -245,7 +259,7 @@ public:
     HeaderBar();
     void paint(juce::Graphics&) override;
     void resized() override;
-    IconButton more { icons::Symbol::More, juce::String::fromUTF8("Inställningar"), false };
+    IconButton more { icons::Symbol::More, juce::String::fromUTF8("Inställningar") };
 };
 
 } // namespace ui

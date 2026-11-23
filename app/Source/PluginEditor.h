@@ -3,7 +3,7 @@
 //   sidhuvud  – appens namn, signalindikator (bara använda ingångar) och ⋯ (alla inställningar)
 //   stämfält  – lågt fält längst ned, alltid synligt (Mute = T)
 //   vänster   – setlist: grundljud + presets i spelordning (dra för att ordna, Föregående/Nästa)
-//   höger     – effekterna som rutor + vald effekt med runda rattar
+//   höger     – "Effekter" som rutor i signalordning (svart = på) + vald effekt med lodräta reglage
 // Tangenter: 1–9 = preset, 0/Esc = grundljud, ←/→ = föregående/nästa, T = Mute (stämning).
 
 #include <juce_audio_processors/juce_audio_processors.h>
