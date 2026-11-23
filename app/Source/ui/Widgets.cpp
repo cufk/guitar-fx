@@ -1,4 +1,5 @@
 #include "Widgets.h"
+#include "BinaryData.h"
 #include <algorithm>
 
 namespace ui {
@@ -1415,10 +1416,26 @@ HeaderBar::HeaderBar() {
 }
 
 void HeaderBar::paint(juce::Graphics& g) {
-    const auto& p = palette();
-    g.setColour(p.ink);
-    g.setFont(font(30.0f, Weight::Bold).withExtraKerningFactor(-0.02f));
-    g.drawText("Stagebox", getLocalBounds(), juce::Justification::centredLeft, false);
+    // Logotypen (märke + ordmärke) från Resources/logo – mörk variant i mörkt läge.
+    const bool dark = isDarkMode();
+    if (!logo_ || logoDark_ != dark) {
+        logo_ = dark ? juce::Drawable::createFromImageData(BinaryData::stageboxlogodark_svg, BinaryData::stageboxlogodark_svgSize)
+                     : juce::Drawable::createFromImageData(BinaryData::stageboxlogolight_svg, BinaryData::stageboxlogolight_svgSize);
+        logoDark_ = dark;
+    }
+    if (logo_) {
+        // Placera efter SVG:ns egen ritruta (1200 × 314) – inte efter innehållets gränser, som
+        // inte räknar med linjernas tjocklek. I ritrutan börjar märket 5,64 % in från vänster och
+        // märkets mitt ligger 46,6 % ned. Höjd 48 px ger versalhöjd ≈ 23 px (som förra rubriken).
+        const float h = 48.0f, w = h * 1200.0f / 314.0f;
+        const juce::Rectangle<float> dest(-0.0564f * w, static_cast<float>(getHeight()) * 0.5f - 0.466f * h, w, h);
+        logo_->draw(g, 1.0f, juce::RectanglePlacement(juce::RectanglePlacement::stretchToFit)
+                                 .getTransformToFit({ 0.0f, 0.0f, 1200.0f, 314.0f }, dest));
+    } else {
+        g.setColour(palette().ink);
+        g.setFont(font(30.0f, Weight::Bold).withExtraKerningFactor(-0.02f));
+        g.drawText("Stagebox", getLocalBounds(), juce::Justification::centredLeft, false);
+    }
 }
 
 void HeaderBar::resized() {

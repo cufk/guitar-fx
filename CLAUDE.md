@@ -50,6 +50,12 @@ Driftsäkerhet live är huvudkravet. Svara på svenska.
   Användaren valde signalanalys (inte Demucs/AI-separering) – Demucs kan bli ett Mac-tillval.
   Ny effekt = lägg till i kedjan + `rig_.addEffect({...})` i processorn; ruta, reglage och
   sparning kommer automatiskt.
+- Varumärke: `app/Resources/BRAND.md` (färger, filer). Appikon via `ICON_BIG` i
+  `app/CMakeLists.txt` (macOS: `app-icon/macos/icon-macos-light-1024.png` med Apples rutnät,
+  iOS: `app-icon/ios/icon-ios-light-1024.png`). Logotypen i sidhuvudet ritas från
+  `Resources/logo/app/stagebox-logo-{light,dark}.svg` (märkets transform förberäknad – JUCE:s
+  SVG-läsare klarar inte kedjade transformer) och placeras efter ritrutan 1200 × 314, inte
+  efter `getDrawableBounds()` (som missar linjernas tjocklek).
 - Fristående app: eget fönster i `app/Source/StandaloneApp.cpp`
   (JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP) – inbyggd titelrad, ljudinställningar via ⋯-menyn.
   Inställningar i `Stagebox.settings` (kopieras från `GuitarFX.settings` första gången).
