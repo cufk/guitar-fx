@@ -224,7 +224,7 @@ för stereo i PA:t.
 1. Tryck **+** ovanför setlistan och ge presetet ett namn (det blir aktivt).
 2. Ställ in effekterna. **Allt du ändrar sparas i det aktiva presetet** – en effekt du ändrar
    eller slår på tas automatiskt med (rutan visar I PRESET). Grundljudet påverkas inte.
-3. Effekter du inte rör följer grundljudet. **I presetet** av = ta bort effekten ur presetet.
+3. Effekter du inte rör följer grundljudet. **Högerklick eller långt tryck på effektrutan** → "Följ grundljudet igen" tar bort effekten ur presetet (eller "Ta med i presetet").
 4. Vill du ändra grundljudet: välj **0 Grundljud** först.
 
 **Live:** tryck på en rad i setlistan för att aktivera det och på **0 Grundljud** för att gå

@@ -74,6 +74,16 @@ Pill::Pill(const juce::String& label, bool toggle) : juce::Button(label) {
     setMouseCursor(juce::MouseCursor::PointingHandCursor);
 }
 
+int Pill::idealWidth(const juce::String& label) const {
+    const float size = getHeight() >= 44 ? 15.0f : 13.5f;
+    float w = 28.0f + textWidth(font(size, Weight::SemiBold), label);
+    if (prefix.isNotEmpty()) w += textWidth(font(size, Weight::Regular), prefix) + 10.0f;
+    if (suffix.isNotEmpty()) w += textWidth(font(size, Weight::Regular), suffix) + 8.0f;
+    if (showSymbol) w += 22.0f;
+    if (chevron) w += 18.0f;
+    return static_cast<int>(std::ceil(w));
+}
+
 float Pill::naturalTextWidth() const {
     return textWidth(font(getHeight() >= 44 ? 15.0f : 13.5f, Weight::SemiBold), getButtonText());
 }
@@ -116,7 +126,8 @@ void Pill::paintButton(juce::Graphics& g, bool over, bool down) {
     const float sw = showSymbol ? 22.0f : 0.0f;
     const auto sf = font(f.getHeight(), Weight::Regular);
     const float xw = suffix.isNotEmpty() ? textWidth(sf, suffix) + 8.0f : 0.0f;
-    const float total = juce::jmin(r.getWidth() - 28.0f, w + pw + sw + xw);
+    const float cw = chevron ? 18.0f : 0.0f;
+    const float total = juce::jmin(r.getWidth() - 28.0f, w + pw + sw + xw + cw);
     float x = r.getCentreX() - total * 0.5f;
     if (showSymbol) {
         icons::draw(g, symbol, { x, r.getCentreY() - 7.0f, 14.0f, 14.0f }, ink.withMultipliedAlpha(symbolAlpha), 1.7f);
@@ -135,6 +146,10 @@ void Pill::paintButton(juce::Graphics& g, bool over, bool down) {
         g.setColour(on ? ink.withAlpha(0.7f) : p.secondaryInk);
         g.setFont(sf);
         g.drawText(suffix, juce::Rectangle<float>(x + w + 8.0f, r.getY(), xw, r.getHeight()), juce::Justification::centredLeft, false);
+    }
+    if (chevron) {
+        const float cx = juce::jmin(x + w + xw + 8.0f, r.getRight() - 24.0f);
+        icons::draw(g, icons::Symbol::ChevronDown, { cx, r.getCentreY() - 5.0f, 10.0f, 10.0f }, ink, 1.6f);
     }
 }
 
@@ -337,9 +352,39 @@ void EffectGrid::paint(juce::Graphics& g) {
     }
 }
 
+void EffectGrid::mouseDown(const juce::MouseEvent& e) {
+    downTime_ = juce::Time::getMillisecondCounter();
+    popupDown_ = e.mods.isPopupMenu();
+}
+
 void EffectGrid::mouseUp(const juce::MouseEvent& e) {
     const int i = cellAt(e.getPosition());
-    if (i >= 0 && e.mouseWasClicked()) { selected_ = i; repaint(); if (onSelect_) onSelect_(i); }
+    if (i < 0 || !e.mouseWasClicked()) return;
+    selected_ = i;
+    repaint();
+    if (onSelect_) onSelect_(i);
+    if (popupDown_ || juce::Time::getMillisecondCounter() - downTime_ >= 500) showMenu(i);
+}
+
+void EffectGrid::showMenu(int i) {
+    auto& rig = proc_.rig();
+    const auto& e = rig.effects()[size_t(i)];
+    juce::PopupMenu m;
+    m.addSectionHeader(u8(e.title.empty() ? e.name : e.title));
+    if (rig.activePreset() < 0) {
+        m.addItem(1, S("Grundljudet är aktivt – välj ett preset först"), false);
+    } else if (rig.activeIncludes(e.id)) {
+        m.addItem(2, S("Följ grundljudet igen (ta bort ur ”") + u8(rig.activeName()) + S("”)"));
+    } else {
+        m.addItem(3, S("Ta med i presetet ”") + u8(rig.activeName()) + S("”"));
+    }
+    juce::Component::SafePointer<EffectGrid> safe(this);
+    const std::string id = e.id;
+    m.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this).withMousePosition(), [safe, id](int r) {
+        if (!safe || (r != 2 && r != 3)) return;
+        safe->proc_.rig().setIncludedInActive(id, r == 3);
+        safe->repaint();
+    });
 }
 
 void EffectGrid::mouseMove(const juce::MouseEvent& e) {
@@ -355,13 +400,7 @@ EffectPanel::EffectPanel(GuitarFXProcessor& proc) : proc_(proc), filters_(proc) 
     switch_.onClick = [this] {
         if (index_ >= 0) proc_.engine().chain().setEnabled(proc_.rig().effects()[size_t(index_)].slot, switch_.getToggleState());
     };
-    presetPill_.setTooltip(S("Ingår i det aktiva presetet. Stäng av för att effekten ska följa grundljudet igen."));
-    presetPill_.symbol = icons::Symbol::Check;
-    presetPill_.onClick = [this] {
-        if (index_ >= 0) proc_.rig().setIncludedInActive(proc_.rig().effects()[size_t(index_)].id, presetPill_.getToggleState());
-    };
     addAndMakeVisible(switch_);
-    addChildComponent(presetPill_);
     loadIr_ = std::make_unique<Pill>(S("Ladda IR…"), false);
     builtInIr_ = std::make_unique<Pill>(S("Inbyggd"), false);
     loadIr_->onClick = [this] {
@@ -391,7 +430,34 @@ void EffectPanel::show(int i) {
     if (i < 0 || i >= static_cast<int>(effects.size())) return;
     index_ = i;
     tiles_.clear();
+    choiceMenus_.clear();
+    choiceSpecs_.clear();
     for (const auto& p : effects[size_t(i)].params) {
+        if (!p.choices.empty()) {
+            // Val blir en rullgardin i rubrikraden i stället för en reglageruta.
+            auto m = std::make_unique<Pill>(juce::String(), false);
+            m->prefix = u8(p.label);
+            m->chevron = true;
+            m->setTooltip(u8(p.label));
+            const size_t k = choiceSpecs_.size();
+            m->onClick = [this, k] {
+                if (k >= choiceSpecs_.size() || k >= choiceMenus_.size()) return;
+                const auto& spec = choiceSpecs_[k];
+                const int cur = juce::roundToInt(spec.param->get());
+                juce::PopupMenu menu;
+                menu.addSectionHeader(u8(spec.label));
+                for (size_t c = 0; c < spec.choices.size(); ++c)
+                    menu.addItem(static_cast<int>(c) + 1, u8(spec.choices[c]), true, static_cast<int>(c) == cur);
+                juce::Component::SafePointer<EffectPanel> safe(this);
+                auto* param = spec.param;
+                menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(choiceMenus_[k].get()),
+                                   [safe, param](int r) { if (safe && r > 0) { param->set(static_cast<float>(r - 1)); safe->refresh(); } });
+            };
+            addAndMakeVisible(*m);
+            choiceMenus_.push_back(std::move(m));
+            choiceSpecs_.push_back(p);
+            continue;
+        }
         tiles_.push_back(std::make_unique<KnobTile>(p));
         addAndMakeVisible(*tiles_.back());
     }
@@ -409,16 +475,16 @@ void EffectPanel::show(int i) {
 void EffectPanel::refresh() {
     if (index_ < 0) return;
     const auto& e = proc_.rig().effects()[size_t(index_)];
-    auto& rig = proc_.rig();
     const bool on = proc_.engine().chain().isEnabled(e.slot);
     if (switch_.getToggleState() != on) switch_.setToggleState(on, juce::dontSendNotification);
-    const bool presetActive = rig.activePreset() >= 0;
-    if (presetPill_.isVisible() != presetActive) { presetPill_.setVisible(presetActive); resized(); }
-    const bool included = presetActive && rig.activeIncludes(e.id);
-    presetPill_.setToggleState(included, juce::dontSendNotification);
-    if (presetPill_.showSymbol != included) { presetPill_.showSymbol = included; presetPill_.repaint(); }
     activity_ = (on && e.activity) ? e.activity() : 0.0f;
     for (auto& t : tiles_) t->refresh();
+    for (size_t k = 0; k < choiceMenus_.size(); ++k) {
+        const auto& spec = choiceSpecs_[k];
+        const int cur = juce::jlimit(0, static_cast<int>(spec.choices.size()) - 1, juce::roundToInt(spec.param->get()));
+        const auto text = u8(spec.choices[size_t(cur)]);
+        if (choiceMenus_[k]->getButtonText() != text) choiceMenus_[k]->setButtonText(text);
+    }
     if (tap_.isVisible()) {
         // Tempo som text och en prick som blinkar på varje taktslag (räknat från senaste tap).
         const float bpm = proc_.delay().tempoBpm.get();
@@ -444,17 +510,13 @@ void EffectPanel::paint(juce::Graphics& g) {
     g.setColour(p.line);
     g.fillRect(0, 12, getWidth(), 1);
 
-    int right = switch_.getX();
-    if (presetPill_.isVisible()) right = presetPill_.getX();
-    if (loadIr_->isVisible()) right = loadIr_->getX();
-    if (tap_.isVisible()) right = tap_.getX();
-    if (resetFilters_.isVisible()) right = resetFilters_.getX();
+    const int right = headerLeft_;
     auto head = juce::Rectangle<int>(0, kHead - size::sectionHead, juce::jmax(0, right - 24), size::sectionHead);
 
     const juce::String title = u8(e.title.empty() ? e.name : e.title);
     juce::String status;
     if (rig.activePreset() < 0) status = on ? S("På i grundljudet") : S("Av");
-    else if (rig.activeIncludes(e.id)) status = (on ? S("På") : S("Av")) + S(" · sparas i presetet ”") + u8(rig.activeName()) + S("”");
+    else if (rig.activeIncludes(e.id)) status = (on ? S("På") : S("Av")) + S(" · sparas i presetet ”") + u8(rig.activeName()) + S("” · högerklicka på rutan för att följa grundljudet");
     else status = on ? S("På · följer grundljudet – ändra för att spara i presetet") : S("Av · följer grundljudet – slå på eller ändra för att spara i presetet");
     if (e.id == "cabinet") status << S(" · ") << u8(proc_.cabinet().impulseResponseName());
     if (e.id == "sustain" && activity_ < -0.5f) status << S(" · ") << juce::String(juce::roundToInt(-activity_)) << S(" dB kompression");
@@ -479,8 +541,13 @@ void EffectPanel::resized() {
     const int sb = size::smallButton;
     switch_.setBounds(head.removeFromRight(56).withSizeKeepingCentre(56, 34));
     head.removeFromRight(12);
-    if (presetPill_.isVisible()) {
-        presetPill_.setBounds(head.removeFromRight(124).withSizeKeepingCentre(124, sb));
+    // Rullgardiner närmast av/på-reglaget; bredden rymmer det längsta valet (ingen hoppande bredd).
+    for (size_t k = choiceMenus_.size(); k-- > 0;) {
+        auto& m = *choiceMenus_[k];
+        m.setSize(m.getWidth(), sb);
+        int w = 0;
+        for (const auto& c : choiceSpecs_[k].choices) w = juce::jmax(w, m.idealWidth(u8(c)));
+        m.setBounds(head.removeFromRight(w).withSizeKeepingCentre(w, sb));
         head.removeFromRight(8);
     }
     if (loadIr_->isVisible()) {
@@ -490,6 +557,7 @@ void EffectPanel::resized() {
     }
     if (tap_.isVisible()) tap_.setBounds(head.removeFromRight(130).withSizeKeepingCentre(130, sb));
     if (resetFilters_.isVisible()) resetFilters_.setBounds(head.removeFromRight(104).withSizeKeepingCentre(104, sb));
+    headerLeft_ = head.getRight();
     r.removeFromTop(size::sectionGap);
 
     const int n = static_cast<int>(tiles_.size());
@@ -1029,6 +1097,8 @@ TunerStrip::TunerStrip(GuitarFXProcessor& proc) : proc_(proc) {
             if (safe && r > 0) safe->proc_.referenceA4.store(static_cast<float>(r));
         });
     };
+    tuning_.chevron = true;
+    reference_.chevron = true;
     addAndMakeVisible(mute_);
     addAndMakeVisible(tuning_);
     addAndMakeVisible(reference_);
@@ -1194,9 +1264,9 @@ void TunerStrip::resized() {
     const int pillH = juce::jmin(size::button, getHeight() - 16);
     mute_.setBounds(r.removeFromRight(92).withSizeKeepingCentre(92, pillH));
     r.removeFromRight(8);
-    reference_.setBounds(r.removeFromRight(86).withSizeKeepingCentre(86, pillH));
+    reference_.setBounds(r.removeFromRight(104).withSizeKeepingCentre(104, pillH));
     r.removeFromRight(8);
-    const int tw = juce::jmax(110, static_cast<int>(textWidth(font(13.5f, Weight::SemiBold), tuning_.getButtonText())) + 36);
+    const int tw = juce::jmax(110, static_cast<int>(textWidth(font(13.5f, Weight::SemiBold), tuning_.getButtonText())) + 54);   // + pil
     tuning_.setBounds(r.removeFromRight(tw).withSizeKeepingCentre(tw, pillH));
     r.removeFromRight(18);
     stringsArea_ = r.removeFromRight(juce::jmin(220, r.getWidth() / 5)).withSizeKeepingCentre(juce::jmin(220, r.getWidth() / 5), 28);

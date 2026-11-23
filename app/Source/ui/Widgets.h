@@ -45,6 +45,9 @@ public:
     juce::String suffix;            // grå text efter (t.ex. "+4 dB", "96 BPM")
     float symbolAlpha = 1.0f;       // t.ex. blinkande takt-prick
     float fontScale = 1.0f;         // < 1 i smala rutor (sätts av KnobTile för alla val samtidigt)
+    bool chevron = false;           // pil nedåt efter texten = öppnar en meny (rullgardin)
+    // Bredd som rymmer prefix, given etikett, suffix och pil (34/44 px höga knappar).
+    int idealWidth(const juce::String& label) const;
     // Textbredd vid fontScale 1 (för att räkna ut en gemensam skala).
     float naturalTextWidth() const;
     // Valfria färger (används t.ex. i stämfältet, som har egen bakgrund). Genomskinlig = standard.
@@ -90,16 +93,21 @@ public:
     static int preferredHeight() { return size::sectionHead + size::sectionGap + 2 * kTileH + kGridGap; }
     void refresh() { repaint(); }
     void paint(juce::Graphics&) override;
+    void mouseDown(const juce::MouseEvent&) override;
     void mouseUp(const juce::MouseEvent&) override;
     void mouseMove(const juce::MouseEvent&) override;
     void mouseExit(const juce::MouseEvent&) override { hover_ = -1; repaint(); }
 private:
+    // Högerklick / långt tryck: ta med effekten i aktivt preset eller låt den följa grundljudet.
+    void showMenu(int effectIndex);
     juce::Rectangle<int> cell(int position) const;
     int cellAt(juce::Point<int>) const;     // effektindex eller -1
     GuitarFXProcessor& proc_;
     std::function<void(int)> onSelect_;
     std::vector<int> order_;                // visningsordning (effektindex sorterade efter plats i kedjan)
     int selected_ = 0, hover_ = -1;
+    juce::uint32 downTime_ = 0;
+    bool popupDown_ = false;
     static constexpr int kTileH = 84;
 };
 
@@ -125,7 +133,6 @@ private:
     GuitarFXProcessor& proc_;
     int index_ = -1;
     Switch switch_;
-    Pill presetPill_ { "I presetet" };
     std::unique_ptr<Pill> loadIr_, builtInIr_;
     Pill tap_ { "Tap", false };
     Pill resetFilters_ { juce::String::fromUTF8("Nollställ"), false };
@@ -133,6 +140,10 @@ private:
     std::unique_ptr<juce::FileChooser> chooser_;
     juce::String irStatus_;
     std::vector<std::unique_ptr<KnobTile>> tiles_;
+    // Val (t.ex. kroppstyp, indelning) som rullgardiner till vänster om av/på-reglaget.
+    std::vector<std::unique_ptr<Pill>> choiceMenus_;
+    std::vector<gfx::ParamSpec> choiceSpecs_;
+    int headerLeft_ = 0;          // vänsterkant för knapparna i rubrikraden (för rubrikens bredd)
     float activity_ = 0.0f;
     static constexpr int kHead = 12 + 1 + 15 + size::sectionHead;   // linje + luft + rubrikrad
 };
