@@ -17,6 +17,13 @@
 #include "dsp/effects/Flanger.h"
 #include "dsp/effects/Reverb.h"
 #include "dsp/effects/Distortion.h"
+#include "dsp/effects/Body.h"
+#include "dsp/effects/Delay.h"
+#include "dsp/effects/Doubler.h"
+#include "dsp/effects/FeedbackSuppressor.h"
+#include "dsp/effects/Tremolo.h"
+#include "dsp/effects/Volume.h"
+#include "engine/TapTempo.h"
 #include <random>
 #include <thread>
 #include <atomic>
@@ -712,6 +719,38 @@ int main() {
               r.decaySec.set(hi ? 10.0f : 0.3f); r.size.set(hi ? 1.0f : 0.0f); r.predelayMs.set(hi ? 120.0f : 0.0f);
               r.dampHz.set(hi ? 16000.0f : 1500.0f); r.lowCutHz.set(hi ? 20.0f : 600.0f); r.mix.set(1.0f); },
           [](gfx::Effect& e) { static_cast<gfx::Reverb&>(e).mix.set(0.0f); } },
+        { "Rundgångsskydd",
+          [] { return std::make_unique<gfx::FeedbackSuppressor>(); },
+          [](gfx::Effect& e, bool hi) { auto& f = static_cast<gfx::FeedbackSuppressor&>(e);
+              for (auto* p : { &f.sensitivity, &f.maxFilters, &f.maxDepthDb }) p->set(hi ? p->max() : p->min()); },
+          [](gfx::Effect&) {} },
+        { "Delay",
+          [] { return std::make_unique<gfx::Delay>(); },
+          [](gfx::Effect& e, bool hi) { auto& d = static_cast<gfx::Delay&>(e);
+              for (auto* p : { &d.tempoBpm, &d.division, &d.feedback, &d.dampHz }) p->set(hi ? p->max() : p->min());
+              d.mix.set(1.0f); },
+          [](gfx::Effect& e) { static_cast<gfx::Delay&>(e).mix.set(0.0f); } },
+        { "Volym",
+          [] { return std::make_unique<gfx::Volume>(); },
+          [](gfx::Effect& e, bool hi) { auto& v = static_cast<gfx::Volume&>(e);
+              v.levelDb.set(hi ? 6.0f : -12.0f); v.boostDb.set(hi ? 12.0f : 0.0f); v.setBoost(hi); },
+          [](gfx::Effect& e) { static_cast<gfx::Volume&>(e).levelDb.set(0.0f); } },
+        { "Kropp",
+          [] { return std::make_unique<gfx::Body>(); },
+          [](gfx::Effect& e, bool hi) { auto& b = static_cast<gfx::Body&>(e);
+              for (auto* p : { &b.type, &b.amount, &b.airDb }) p->set(hi ? p->max() : p->min()); },
+          [](gfx::Effect& e) { auto& b = static_cast<gfx::Body&>(e); b.amount.set(0.0f); b.airDb.set(0.0f); } },
+        { "Dubblare",
+          [] { return std::make_unique<gfx::Doubler>(); },
+          [](gfx::Effect& e, bool hi) { auto& d = static_cast<gfx::Doubler&>(e);
+              for (auto* p : { &d.doubling, &d.octave, &d.timeMs, &d.width }) p->set(hi ? p->max() : p->min());
+              d.doubling.set(1.0f); d.octave.set(1.0f); },
+          [](gfx::Effect& e) { auto& d = static_cast<gfx::Doubler&>(e); d.doubling.set(0.0f); d.octave.set(0.0f); } },
+        { "Tremolo",
+          [] { return std::make_unique<gfx::Tremolo>(); },
+          [](gfx::Effect& e, bool hi) { auto& t = static_cast<gfx::Tremolo&>(e);
+              for (auto* p : { &t.rateHz, &t.depth, &t.shape, &t.stereo }) p->set(hi ? p->max() : p->min()); },
+          [](gfx::Effect& e) { static_cast<gfx::Tremolo&>(e).depth.set(0.0f); } },
     };
 
     for (const auto& fc : fxCases) {
@@ -779,6 +818,190 @@ int main() {
             CHECK(scope.count() == 0);
         });
     }
+
+
+    // ----------------------------------------------------------------- Nya effekter: funktion
+    // Amplitud för en frekvens (Goertzel) i ett utsnitt.
+    auto toneAmp = [](const std::vector<float>& v, size_t from, size_t len, double hz) {
+        const double w = 2.0 * 3.14159265358979 * hz / kSr, c = 2.0 * std::cos(w);
+        double s1 = 0.0, s2 = 0.0;
+        for (size_t i = from; i < from + len; ++i) { const double s0 = v[i] + c * s1 - s2; s2 = s1; s1 = s0; }
+        return 2.0 * std::sqrt(std::max(0.0, s1 * s1 + s2 * s2 - c * s1 * s2)) / static_cast<double>(len);
+    };
+    // Gitarrlikt spel: knäppta toner med övertoner som klingar av, ny ton var 0,6 s.
+    auto pluckedGuitar = [](std::vector<float>& v, float amp) {
+        const double notes[] = { 82.4, 110.0, 146.8, 196.0, 246.9, 329.6, 220.0, 293.7, 392.0, 164.8 };
+        const size_t step = static_cast<size_t>(0.6 * kSr);
+        for (size_t i = 0; i < v.size(); ++i) {
+            const size_t n = i / step;
+            const double t = static_cast<double>(i - n * step) / kSr, f = notes[n % 10];
+            double x = 0.0;
+            for (int h = 1; h <= 8; ++h) x += std::sin(2.0 * 3.14159265358979 * f * h * t) / h * std::exp(-t * (1.5 + 0.4 * h));
+            v[i] += static_cast<float>(amp * x);
+        }
+    };
+
+    run("Rundgångsskydd: en ton som ringer upp får ett filter och dämpas", [&] {
+        gfx::FeedbackSuppressor fb;
+        fb.prepare({ kSr, kBlock, 2 });
+        const size_t n = static_cast<size_t>(4.0 * kSr);
+        Stereo s(static_cast<int>(n));
+        pluckedGuitar(s.l, 0.15f);
+        // Rundgång vid 2345 Hz: växer +12 dB/s från −50 dBFS upp till −10 dBFS.
+        for (size_t i = 0; i < n; ++i) {
+            const double t = static_cast<double>(i) / kSr;
+            const double a = std::min(0.32, 0.0032 * std::pow(10.0, 12.0 * t / 20.0));
+            s.l[i] += static_cast<float>(a * std::sin(2.0 * 3.14159265358979 * 2345.0 * t));
+        }
+        s.r = s.l;
+        const auto in = s.l;
+        runEffect(fb, s);
+        CHECK(fb.activeFilters() >= 1);
+        bool near = false;
+        for (int i = 0; i < gfx::FeedbackSuppressor::kMaxFilters; ++i)
+            if (fb.filterHz(i) > 0.0f && std::fabs(fb.filterHz(i) / 2345.0f - 1.0f) < 0.01f) near = true;
+        CHECK(near);
+        // Sista halvsekunden: rundgångstonen minst 10 dB svagare än in.
+        const size_t from = n - static_cast<size_t>(0.5 * kSr), len = static_cast<size_t>(0.5 * kSr);
+        CHECK(toneAmp(s.l, from, len, 2345.0) < 0.316 * toneAmp(in, from, len, 2345.0));
+    });
+
+    run("Rundgångsskydd: vanligt gitarrspel ger inga filter", [&] {
+        for (float sens : { 0.5f, 1.0f }) {
+            gfx::FeedbackSuppressor fb;
+            fb.sensitivity.set(sens);
+            fb.prepare({ kSr, kBlock, 2 });
+            Stereo s(static_cast<int>(12.0 * kSr));
+            pluckedGuitar(s.l, 0.3f);
+            s.r = s.l;
+            runEffect(fb, s);
+            CHECK(fb.activeFilters() == 0);
+        }
+    });
+
+    run("Rundgångsskydd: nollställning tömmer filtren", [&] {
+        gfx::FeedbackSuppressor fb;
+        fb.prepare({ kSr, kBlock, 2 });
+        Stereo s(static_cast<int>(2.0 * kSr));
+        sine(s.l, 0.3f, 1000.0f);
+        s.r = s.l;
+        runEffect(fb, s);
+        CHECK(fb.activeFilters() >= 1);
+        fb.requestReset();
+        Stereo q(kBlock);
+        runEffect(fb, q);
+        CHECK(fb.activeFilters() == 0);
+    });
+
+    run("Delay: ekot kommer efter rätt tid (120 BPM, 1/8 = 250 ms)", [] {
+        gfx::Delay d;
+        d.tempoBpm.set(120.0f); d.division.set(2.0f); d.feedback.set(0.5f); d.mix.set(1.0f); d.dampHz.set(12000.0f);
+        d.prepare({ kSr, kBlock, 2 });
+        Stereo s(static_cast<int>(kSr));
+        s.l[100] = s.r[100] = 1.0f;
+        runEffect(d, s);
+        const size_t echo = 100 + static_cast<size_t>(0.25 * kSr), echo2 = 100 + static_cast<size_t>(0.5 * kSr);
+        size_t peakAt = 0; float peak = 0.0f;
+        for (size_t i = 200; i < echo + 2000; ++i) if (std::fabs(s.l[i]) > peak) { peak = std::fabs(s.l[i]); peakAt = i; }
+        CHECK(peakAt >= echo - 2 && peakAt <= echo + 2);
+        float second = 0.0f;
+        for (size_t i = echo2 - 50; i < echo2 + 50; ++i) second = std::max(second, std::fabs(s.l[i]));
+        CHECK(second > 0.2f * peak && second < 0.7f * peak);   // återkoppling 0,5 (lite dämpat)
+    });
+
+    run("Delay: svansen klingar ut efter avstängning och torrt passerar", [] {
+        gfx::Delay d;
+        d.feedback.set(0.6f); d.mix.set(0.5f);
+        d.prepare({ kSr, kBlock, 2 });
+        Stereo s(static_cast<int>(kSr));
+        sine(s.l, 0.3f, 440.0f);
+        s.r = s.l;
+        runEffect(d, s);
+        d.setInputActive(false);
+        Stereo q(static_cast<int>(10.0 * kSr));
+        runEffect(d, q);
+        CHECK(d.tailFinished());
+    });
+
+    run("Tap tempo: fyra tryck med 500 ms ger 120 BPM, paus börjar om", [] {
+        gfx::TapTempo t;
+        CHECK(t.tap(1000.0) == 0.0f);
+        CHECK(std::fabs(t.tap(1500.0) - 120.0f) < 0.01f);
+        t.tap(2000.0);
+        CHECK(std::fabs(t.tap(2500.0) - 120.0f) < 0.01f);
+        CHECK(t.tap(6000.0) == 0.0f);                   // paus > 2 s
+        CHECK(std::fabs(t.tap(6750.0) - 80.0f) < 0.01f);
+    });
+
+    run("Volym: nivå och boost", [] {
+        gfx::Volume v;
+        v.levelDb.set(-6.0f); v.boostDb.set(6.0f);
+        v.prepare({ kSr, kBlock, 2 });
+        Stereo s(4800);
+        for (auto& x : s.l) x = 1.0f;
+        s.r = s.l;
+        runEffect(v, s);
+        CHECK(std::fabs(s.l.back() - 0.501f) < 0.01f);
+        v.setBoost(true);
+        Stereo q(4800);
+        for (auto& x : q.l) x = 1.0f;
+        q.r = q.l;
+        runEffect(v, q);
+        CHECK(std::fabs(q.l.back() - 1.0f) < 0.01f);
+    });
+
+    run("Kropp: lyfter kroppens resonans och sänker kvacket", [&] {
+        gfx::Body b;
+        b.type.set(0.0f); b.amount.set(1.0f); b.airDb.set(0.0f);
+        b.prepare({ kSr, kBlock, 2 });
+        for (double hz : { 98.0, 1900.0 }) {
+            Stereo s(48000);
+            sine(s.l, 0.1f, static_cast<float>(hz));
+            s.r = s.l;
+            const auto in = s.l;
+            b.reset();
+            runEffect(b, s);
+            const double ratio = toneAmp(s.l, 24000, 24000, hz) / toneAmp(in, 24000, 24000, hz);
+            if (hz < 200.0) CHECK(ratio > 1.8); else CHECK(ratio < 0.75);
+        }
+    });
+
+    run("Dubblare: oktaven ger energi en oktav upp, dubblingen gör stereo", [&] {
+        gfx::Doubler d;
+        d.doubling.set(0.0f); d.octave.set(1.0f);
+        d.prepare({ kSr, kBlock, 2 });
+        Stereo s(48000);
+        sine(s.l, 0.3f, 220.0f);
+        s.r = s.l;
+        runEffect(d, s);
+        CHECK(toneAmp(s.l, 24000, 24000, 440.0) > 0.05);
+        gfx::Doubler w;
+        w.doubling.set(1.0f); w.octave.set(0.0f); w.width.set(1.0f);
+        w.prepare({ kSr, kBlock, 2 });
+        Stereo q(48000);
+        sine(q.l, 0.3f, 330.0f);
+        q.r = q.l;
+        runEffect(w, q);
+        float diff = 0.0f;
+        for (size_t i = 24000; i < q.l.size(); ++i) diff = std::max(diff, std::fabs(q.l[i] - q.r[i]));
+        CHECK(diff > 0.05f);
+    });
+
+    run("Tremolo: volymen pulserar med rätt djup, stereo i motfas", [] {
+        gfx::Tremolo t;
+        t.rateHz.set(5.0f); t.depth.set(0.8f); t.stereo.set(1.0f);
+        t.prepare({ kSr, kBlock, 2 });
+        Stereo s(48000);
+        for (size_t i = 0; i < s.l.size(); ++i) s.l[i] = s.r[i] = 1.0f;
+        runEffect(t, s);
+        float lo = 1.0f, hi = 0.0f, sumDiff = 0.0f;
+        for (size_t i = 4800; i < s.l.size(); ++i) {
+            lo = std::min(lo, s.l[i]); hi = std::max(hi, s.l[i]);
+            sumDiff += std::fabs(s.l[i] - s.r[i]);
+        }
+        CHECK(std::fabs(lo - 0.2f) < 0.02f && hi > 0.98f);
+        CHECK(sumDiff / static_cast<float>(s.l.size() - 4800) > 0.3f);
+    });
 
     run("Chorus och flanger: vänster och höger skiljer sig (stereo)", [] {
         for (int which = 0; which < 2; ++which) {
