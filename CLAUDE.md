@@ -41,6 +41,8 @@ Driftsäkerhet live är huvudkravet. Svara på svenska.
   storlek oavsett effekt. InputPanel använder fortfarande runda rattar (`KnobTile(spec, false)`).
   Val (`ParamSpec::choices`, t.ex. kroppstyp, distortion-typ, delayns indelning) visas som
   rullgardin (`Pill::chevron` + PopupMenu) i rubrikraden närmast av/på-reglaget – inte som reglageruta.
+  Ingen "I presetet"-knapp (användaren tog bort den): att en effekt ingår i presetet syns som
+  I PRESET på rutan och i statusraden; högerklick/långt tryck på rutan = ta med / följ grundljudet.
 - Stämapparat: lågt fält längst ned (`TunerStrip`), stämningar i `ui::tunings()`, valet och
   A4 sparas i processorns state. `engine/TunerTap.h` (ljudtråden kopierar torr ingång till
   ringbuffert; "Mute" gäller bara medan GUI:t är öppet) + `dsp/core/PitchDetector.h` (YIN).

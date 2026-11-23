@@ -93,16 +93,21 @@ public:
     static int preferredHeight() { return size::sectionHead + size::sectionGap + 2 * kTileH + kGridGap; }
     void refresh() { repaint(); }
     void paint(juce::Graphics&) override;
+    void mouseDown(const juce::MouseEvent&) override;
     void mouseUp(const juce::MouseEvent&) override;
     void mouseMove(const juce::MouseEvent&) override;
     void mouseExit(const juce::MouseEvent&) override { hover_ = -1; repaint(); }
 private:
+    // Högerklick / långt tryck: ta med effekten i aktivt preset eller låt den följa grundljudet.
+    void showMenu(int effectIndex);
     juce::Rectangle<int> cell(int position) const;
     int cellAt(juce::Point<int>) const;     // effektindex eller -1
     GuitarFXProcessor& proc_;
     std::function<void(int)> onSelect_;
     std::vector<int> order_;                // visningsordning (effektindex sorterade efter plats i kedjan)
     int selected_ = 0, hover_ = -1;
+    juce::uint32 downTime_ = 0;
+    bool popupDown_ = false;
     static constexpr int kTileH = 84;
 };
 
@@ -128,7 +133,6 @@ private:
     GuitarFXProcessor& proc_;
     int index_ = -1;
     Switch switch_;
-    Pill presetPill_ { "I presetet" };
     std::unique_ptr<Pill> loadIr_, builtInIr_;
     Pill tap_ { "Tap", false };
     Pill resetFilters_ { juce::String::fromUTF8("Nollställ"), false };

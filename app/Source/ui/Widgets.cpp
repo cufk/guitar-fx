@@ -352,9 +352,39 @@ void EffectGrid::paint(juce::Graphics& g) {
     }
 }
 
+void EffectGrid::mouseDown(const juce::MouseEvent& e) {
+    downTime_ = juce::Time::getMillisecondCounter();
+    popupDown_ = e.mods.isPopupMenu();
+}
+
 void EffectGrid::mouseUp(const juce::MouseEvent& e) {
     const int i = cellAt(e.getPosition());
-    if (i >= 0 && e.mouseWasClicked()) { selected_ = i; repaint(); if (onSelect_) onSelect_(i); }
+    if (i < 0 || !e.mouseWasClicked()) return;
+    selected_ = i;
+    repaint();
+    if (onSelect_) onSelect_(i);
+    if (popupDown_ || juce::Time::getMillisecondCounter() - downTime_ >= 500) showMenu(i);
+}
+
+void EffectGrid::showMenu(int i) {
+    auto& rig = proc_.rig();
+    const auto& e = rig.effects()[size_t(i)];
+    juce::PopupMenu m;
+    m.addSectionHeader(u8(e.title.empty() ? e.name : e.title));
+    if (rig.activePreset() < 0) {
+        m.addItem(1, S("Grundljudet är aktivt – välj ett preset först"), false);
+    } else if (rig.activeIncludes(e.id)) {
+        m.addItem(2, S("Följ grundljudet igen (ta bort ur ”") + u8(rig.activeName()) + S("”)"));
+    } else {
+        m.addItem(3, S("Ta med i presetet ”") + u8(rig.activeName()) + S("”"));
+    }
+    juce::Component::SafePointer<EffectGrid> safe(this);
+    const std::string id = e.id;
+    m.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this).withMousePosition(), [safe, id](int r) {
+        if (!safe || (r != 2 && r != 3)) return;
+        safe->proc_.rig().setIncludedInActive(id, r == 3);
+        safe->repaint();
+    });
 }
 
 void EffectGrid::mouseMove(const juce::MouseEvent& e) {
@@ -370,13 +400,7 @@ EffectPanel::EffectPanel(GuitarFXProcessor& proc) : proc_(proc), filters_(proc) 
     switch_.onClick = [this] {
         if (index_ >= 0) proc_.engine().chain().setEnabled(proc_.rig().effects()[size_t(index_)].slot, switch_.getToggleState());
     };
-    presetPill_.setTooltip(S("Ingår i det aktiva presetet. Stäng av för att effekten ska följa grundljudet igen."));
-    presetPill_.symbol = icons::Symbol::Check;
-    presetPill_.onClick = [this] {
-        if (index_ >= 0) proc_.rig().setIncludedInActive(proc_.rig().effects()[size_t(index_)].id, presetPill_.getToggleState());
-    };
     addAndMakeVisible(switch_);
-    addChildComponent(presetPill_);
     loadIr_ = std::make_unique<Pill>(S("Ladda IR…"), false);
     builtInIr_ = std::make_unique<Pill>(S("Inbyggd"), false);
     loadIr_->onClick = [this] {
@@ -451,14 +475,8 @@ void EffectPanel::show(int i) {
 void EffectPanel::refresh() {
     if (index_ < 0) return;
     const auto& e = proc_.rig().effects()[size_t(index_)];
-    auto& rig = proc_.rig();
     const bool on = proc_.engine().chain().isEnabled(e.slot);
     if (switch_.getToggleState() != on) switch_.setToggleState(on, juce::dontSendNotification);
-    const bool presetActive = rig.activePreset() >= 0;
-    if (presetPill_.isVisible() != presetActive) { presetPill_.setVisible(presetActive); resized(); }
-    const bool included = presetActive && rig.activeIncludes(e.id);
-    presetPill_.setToggleState(included, juce::dontSendNotification);
-    if (presetPill_.showSymbol != included) { presetPill_.showSymbol = included; presetPill_.repaint(); }
     activity_ = (on && e.activity) ? e.activity() : 0.0f;
     for (auto& t : tiles_) t->refresh();
     for (size_t k = 0; k < choiceMenus_.size(); ++k) {
@@ -498,7 +516,7 @@ void EffectPanel::paint(juce::Graphics& g) {
     const juce::String title = u8(e.title.empty() ? e.name : e.title);
     juce::String status;
     if (rig.activePreset() < 0) status = on ? S("På i grundljudet") : S("Av");
-    else if (rig.activeIncludes(e.id)) status = (on ? S("På") : S("Av")) + S(" · sparas i presetet ”") + u8(rig.activeName()) + S("”");
+    else if (rig.activeIncludes(e.id)) status = (on ? S("På") : S("Av")) + S(" · sparas i presetet ”") + u8(rig.activeName()) + S("” · högerklicka på rutan för att följa grundljudet");
     else status = on ? S("På · följer grundljudet – ändra för att spara i presetet") : S("Av · följer grundljudet – slå på eller ändra för att spara i presetet");
     if (e.id == "cabinet") status << S(" · ") << u8(proc_.cabinet().impulseResponseName());
     if (e.id == "sustain" && activity_ < -0.5f) status << S(" · ") << juce::String(juce::roundToInt(-activity_)) << S(" dB kompression");
@@ -530,10 +548,6 @@ void EffectPanel::resized() {
         int w = 0;
         for (const auto& c : choiceSpecs_[k].choices) w = juce::jmax(w, m.idealWidth(u8(c)));
         m.setBounds(head.removeFromRight(w).withSizeKeepingCentre(w, sb));
-        head.removeFromRight(8);
-    }
-    if (presetPill_.isVisible()) {
-        presetPill_.setBounds(head.removeFromRight(124).withSizeKeepingCentre(124, sb));
         head.removeFromRight(8);
     }
     if (loadIr_->isVisible()) {
