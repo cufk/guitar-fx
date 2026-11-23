@@ -145,15 +145,33 @@ högerklicka på Stagebox → **Öppna** → **Öppna** (eller
 `xattr -dr com.apple.quarantine /Applications/Stagebox.app`). För att slippa det krävs ett
 betalt Apple Developer-konto (Developer ID-signering och notarisering).
 
-## iOS (senare)
+## iPad
+
+Samma kod som Mac-versionen. Appen körs i helskärm, liggande, på iPad med iPadOS 16 eller
+senare (iPad mini och uppåt). Ljudkort: allt som fungerar utan drivrutiner (class compliant),
+t.ex. Scarlett 2i2, iRig Pro Duo / Pro I/O / HD. Exporterade presets och kopierade IR:er
+syns i Filer-appen under *På min iPad → Stagebox*. Även en AUv3-plugin byggs (för AUM,
+GarageBand m.fl.).
+
+Kräver **hela Xcode** (App Store) och ett Apple-ID inlagt i Xcode (*Xcode → Settings → Accounts*).
 
 ```bash
 cmake -B build-ios -G Xcode -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_DEPLOYMENT_TARGET=16.0
 open build-ios/Stagebox.xcodeproj
 ```
 
-Sätt ditt Team under Signing i Xcode. Använd ett betalt utvecklarkonto – byggen med
-gratiskonto slutar starta efter 7 dagar, vilket är oacceptabelt live.
+I Xcode: välj schemat **Stagebox_Standalone** och din iPad som mål (anslut med kabel första
+gången och godkänn *Lita på den här datorn*). Under *Signing & Capabilities* för målen
+Stagebox_Standalone och Stagebox_AUv3: kryssa *Automatically manage signing* och välj ditt
+Team. Tryck **Kör** (▶). Första gången: på iPaden, *Inställningar → Allmänt → VPN och
+enhetshantering* → lita på ditt utvecklarcertifikat, och slå på *Utvecklarläge*
+(*Inställningar → Integritet och säkerhet*).
+
+Gratiskonto: appen slutar starta efter 7 dagar och måste installeras om. Betalt konto
+(99 USD/år) – ett år, och TestFlight för att installera utan kabel.
+
+CI bygger iPad-versionen vid varje ändring och tar skärmdumpar i simulatorn (iPad Pro 13"
+och iPad mini) – se *Actions → körningen → Artifacts → Stagebox-ipad-skarmdumpar*.
 
 ## Linux / Raspberry Pi (senare)
 

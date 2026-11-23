@@ -60,6 +60,11 @@ Driftsäkerhet live är huvudkravet. Svara på svenska.
   `Resources/logo/app/stagebox-logo-{light,dark}.svg` (märkets transform förberäknad – JUCE:s
   SVG-läsare klarar inte kedjade transformer) och placeras efter ritrutan 1200 × 314, inte
   efter `getDrawableBounds()` (som missar linjernas tjocklek).
+- iPad: samma kod (`#if JUCE_IOS` där det behövs). Helskärm liggande (CMake: TARGETED_DEVICE_FAMILY 2,
+  IPAD_SCREEN_ORIENTATIONS landskap, STATUS_BAR_HIDDEN), ingen fönstergräns (layouten ska klara
+  iPad mini 1133 × 744). Filval: använd alltid `ui::localCopyOf(fc, dir)` – på iPad ger Filer-appen
+  bara en tillfällig URL. Sparar i `suspended()`. CI-jobbet `ipad` bygger för riktig iPad och tar
+  skärmdumpar i simulatorn (`scripts/ipad-screenshots.sh`).
 - Fristående app: eget fönster i `app/Source/StandaloneApp.cpp`
   (JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP) – inbyggd titelrad, ljudinställningar via ⋯-menyn.
   Inställningar i `Stagebox.settings` (kopieras från `GuitarFX.settings` första gången).
