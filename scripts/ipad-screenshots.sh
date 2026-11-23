@@ -20,12 +20,19 @@ APP=$(find "$BUILD_DIR" -path "*Standalone*" -name "Stagebox.app" -type d | head
 echo "App: $APP"
 
 mkdir -p "$OUT"
-RUNTIME=$(xcrun simctl list runtimes -j | python3 -c "import json,sys; r=[x for x in json.load(sys.stdin)['runtimes'] if x['platform']=='iOS' and x['isAvailable']]; print(r[-1]['identifier'])")
+xcrun simctl list runtimes -j > /tmp/runtimes.json
+RUNTIME=$(python3 -c "import json; r=[x for x in json.load(open('/tmp/runtimes.json'))['runtimes'] if x['platform']=='iOS' and x['isAvailable']]; print(r[-1]['identifier'])")
 for MODEL in "iPad Pro 13-inch" "iPad mini"; do
-    TYPE=$(xcrun simctl list devicetypes -j | python3 -c "import json,sys; m=sys.argv[1]; t=[d for d in json.load(sys.stdin)['devicetypes'] if d['name'].startswith(m)]; print(t[-1]['identifier'] if t else '')" "$MODEL")
+    # Bara modeller som den installerade iOS-versionen stöder (annars "Incompatible device").
+    TYPE=$(python3 -c "
+import json, sys
+m, rid = sys.argv[1], sys.argv[2]
+rt = [x for x in json.load(open('/tmp/runtimes.json'))['runtimes'] if x['identifier'] == rid][0]
+t = [d for d in rt.get('supportedDeviceTypes', []) if d['name'].startswith(m)]
+print(t[-1]['identifier'] if t else '')" "$MODEL" "$RUNTIME")
     [ -n "$TYPE" ] || { echo "Ingen simulator för $MODEL – hoppar över"; continue; }
     NAME="ipad-$(echo "$MODEL" | tr ' A-Z' '-a-z' | tr -cd 'a-z0-9-')"
-    UDID=$(xcrun simctl create "$NAME" "$TYPE" "$RUNTIME")
+    UDID=$(xcrun simctl create "$NAME" "$TYPE" "$RUNTIME") || { echo "Kunde inte skapa $MODEL – hoppar över"; continue; }
     xcrun simctl boot "$UDID"
     xcrun simctl bootstatus "$UDID" -b
     xcrun simctl install "$UDID" "$APP"

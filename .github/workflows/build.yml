@@ -52,6 +52,7 @@ jobs:
       - name: Simulator och skärmdumpar
         run: ./scripts/ipad-screenshots.sh
       - name: Ladda upp skärmdumpar
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: Stagebox-ipad-skarmdumpar
