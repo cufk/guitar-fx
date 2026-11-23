@@ -1,4 +1,9 @@
-# Stagebox
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="app/Resources/logo/stagebox-logo-dark.png">
+    <img alt="Stagebox" src="app/Resources/logo/stagebox-logo-light.png" width="320">
+  </picture>
+</h1>
 
 (Tidigare *GuitarFX*. Repot på GitHub heter fortfarande `guitar-fx`.)
 

@@ -22,12 +22,21 @@ else()
     set(GFX_FORMATS Standalone VST3)   # Linux / Raspberry Pi
 endif()
 
+# Appikon (se Resources/BRAND.md): macOS följer Apples rutnät (rundad ruta med transparent
+# kant), iOS är fyrkantig utan transparens (iOS rundar själv).
+if(GFX_IOS)
+    set(GFX_ICON ${CMAKE_CURRENT_SOURCE_DIR}/Resources/app-icon/ios/icon-ios-light-1024.png)
+else()
+    set(GFX_ICON ${CMAKE_CURRENT_SOURCE_DIR}/Resources/app-icon/macos/icon-macos-light-1024.png)
+endif()
+
 juce_add_plugin(Stagebox
     COMPANY_NAME                  "Flatmate"
     BUNDLE_ID                     "se.flatmate.stagebox"
     PLUGIN_MANUFACTURER_CODE      Fltm
     PLUGIN_CODE                   Gtfx
     PRODUCT_NAME                  "Stagebox"
+    ICON_BIG                      ${GFX_ICON}
     FORMATS                       ${GFX_FORMATS}
     IS_SYNTH                      FALSE
     NEEDS_MIDI_INPUT              TRUE      # för fotswitch senare
@@ -38,12 +47,15 @@ juce_add_plugin(Stagebox
     REQUIRES_FULL_SCREEN          TRUE
     COPY_PLUGIN_AFTER_BUILD       FALSE)
 
-# Typsnitt (Inter, SIL Open Font License – se Resources/fonts/Inter-LICENSE.txt).
-juce_add_binary_data(StageboxFonts SOURCES
+# Inbäddade resurser: typsnitt (Inter, SIL Open Font License – se Resources/fonts/Inter-LICENSE.txt)
+# och logotypen för sidhuvudet (ljus/mörk, SVG – varianten i logo/app/ med förberäknat märke).
+juce_add_binary_data(StageboxResources SOURCES
     Resources/fonts/Inter-Light.ttf
     Resources/fonts/Inter-Regular.ttf
     Resources/fonts/Inter-SemiBold.ttf
-    Resources/fonts/Inter-Bold.ttf)
+    Resources/fonts/Inter-Bold.ttf
+    Resources/logo/app/stagebox-logo-light.svg
+    Resources/logo/app/stagebox-logo-dark.svg)
 
 target_sources(Stagebox PRIVATE
     Source/PluginProcessor.cpp
@@ -63,7 +75,7 @@ target_compile_definitions(Stagebox PUBLIC
 target_link_libraries(Stagebox
     PRIVATE
         gfx_core
-        StageboxFonts
+        StageboxResources
         juce::juce_audio_utils
         juce::juce_audio_processors
         juce::juce_dsp

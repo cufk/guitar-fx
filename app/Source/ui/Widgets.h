@@ -280,6 +280,9 @@ public:
     void resized() override;
     IconButton more { icons::Symbol::More, juce::String::fromUTF8("Inställningar") };
     Pill boost { "Boost" };
+private:
+    std::unique_ptr<juce::Drawable> logo_;
+    bool logoDark_ = false;
 };
 
 } // namespace ui
