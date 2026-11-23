@@ -4,7 +4,8 @@
 //   stämfält  – lågt fält längst ned, alltid synligt (Mute = T)
 //   vänster   – setlist: grundljud + presets i spelordning (dra för att ordna, Föregående/Nästa)
 //   höger     – "Effekter" som rutor i signalordning (svart = på) + vald effekt med lodräta reglage
-// Tangenter: 1–9 = preset, 0/Esc = grundljud, ←/→ = föregående/nästa, T = Mute (stämning).
+// Tangenter: 1–9 = preset, 0/Esc = grundljud, ←/→ (PgUp/PgDn) = föregående/nästa, T = Mute (stämning),
+// B = boost, mellanslag = tap tempo.
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "PluginProcessor.h"
@@ -46,7 +47,7 @@ private:
     std::unique_ptr<juce::FileChooser> chooser_;
 
     uint64_t lastBlockCount_ = 0;
-    int stalledTicks_ = 0, tick_ = 0;
+    int stalledTicks_ = 0, tick_ = 0, meterPillWidth_ = 0;
     bool dark_ = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(GuitarFXEditor)

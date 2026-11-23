@@ -12,6 +12,10 @@ Driftsäkerhet live är huvudkravet. Svara på svenska.
 - `app/`: JUCE 9.0.6-skal (Standalone/AU/VST3/AUv3). Endast limkod och GUI.
 - Alla effekter implementerar `gfx::Effect` (prepare/reset/process/latencySamples).
 - Kedja: InputMixer (in 1/2/blanda → mono) → in-gain → EffectChain → ut-gain → SafetyLimiter (alltid sist).
+  EffectChain: EQ → Kropp → Sustain → Distortion → Kabinett → Rundgångsskydd → Dubblare →
+  Chorus → Flanger → Tremolo → Widener → Delay → Reverb → Volym. Rundgångsskyddet ska ligga
+  efter allt som höjer nivån och före modulation (som smetar ut topparna det letar efter).
+  MIDI: PC 0–8 preset, CC 102/103/104 föreg./nästa/grundljud, 105 mute, 106 boost, 107 tap.
 - Parametrar: `gfx::Parameter` (atomic) + `SmoothedValue` på ljudtråden.
 - Presets: `gfx::Rig` (engine/Rig.h) – grundljud + presets (ett i taget). Används bara från
   meddelandetråden; processorns timer kör `syncFromLive()` och MIDI-kommandon (50 Hz).
@@ -29,7 +33,10 @@ Driftsäkerhet live är huvudkravet. Svara på svenska.
   EffectPanel, KnobTile, InputPanel, TunerStrip, AnalysisView). InputMeter i sidhuvudet visar
   bara de ingångar som används (IN 1 / IN 2 enligt ingångsläget). Status (CPU, limiter,
   latens, MIDI) ligger i ⋯-menyn. Ingen färg utom rött för varningar.
-  Effektrutorna: fyra kolumner (`kGridColumns`) i signalordning (sorterade på kedjeplats).
+  Effektrutorna: 14 effekter i sju kolumner (`kControlColumns`, samma som reglagen) i
+  signalordning (sorterade på kedjeplats); kort namn i rutan, `EffectSpec::title` i panelen.
+  Boost-knappen i sidhuvudet (global, `Volume::setBoost`), Tap i delayns panel,
+  Nollställ + `FilterView` för rundgångsskyddet.
   Reglagen: en rad med sju lika breda platser (`kControlColumns`) som fyller höjden – samma
   storlek oavsett effekt. InputPanel använder fortfarande runda rattar (`KnobTile(spec, false)`).
 - Stämapparat: lågt fält längst ned (`TunerStrip`), stämningar i `ui::tunings()`, valet och
@@ -43,6 +50,12 @@ Driftsäkerhet live är huvudkravet. Svara på svenska.
   Användaren valde signalanalys (inte Demucs/AI-separering) – Demucs kan bli ett Mac-tillval.
   Ny effekt = lägg till i kedjan + `rig_.addEffect({...})` i processorn; ruta, reglage och
   sparning kommer automatiskt.
+- Varumärke: `app/Resources/BRAND.md` (färger, filer). Appikon via `ICON_BIG` i
+  `app/CMakeLists.txt` (macOS: `app-icon/macos/icon-macos-light-1024.png` med Apples rutnät,
+  iOS: `app-icon/ios/icon-ios-light-1024.png`). Logotypen i sidhuvudet ritas från
+  `Resources/logo/app/stagebox-logo-{light,dark}.svg` (märkets transform förberäknad – JUCE:s
+  SVG-läsare klarar inte kedjade transformer) och placeras efter ritrutan 1200 × 314, inte
+  efter `getDrawableBounds()` (som missar linjernas tjocklek).
 - Fristående app: eget fönster i `app/Source/StandaloneApp.cpp`
   (JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP) – inbyggd titelrad, ljudinställningar via ⋯-menyn.
   Inställningar i `Stagebox.settings` (kopieras från `GuitarFX.settings` första gången).
@@ -71,8 +84,8 @@ Se "Färdplan" i README.md. Klart: akustisk ingång, EQ med notch, sustain (komp
 chorus, flanger, widener, reverb (FDN, utklingning vid bypass), mono-utgång, presets (Rig)
 med MIDI/tangenter, monokromt GUI med lodräta reglage, eget appfönster, distortion,
 kabinett-IR, latensmätare (5,60 ms rundtur, buffert 64).
-Stämapparat och låtanalys klara. Nästa: delay (kan använda låtens BPM); MIDI learn;
-scenläge för iPad.
+Stämapparat och låtanalys klara. Rundgångsskydd, delay + tap tempo, kropp, dubblare/oktav,
+tremolo och volym/boost klara (nov 2026). Nästa: looper; MIDI learn; scenläge för iPad.
 Känt: effekter före chorus bearbetar båda kanalerna fast signalen är mono (dubbel CPU) –
 värt att åtgärda före Raspberry Pi. getStateInformation läser Rig och antar
 meddelandetråden (gäller standalone; vissa plugin-värdar anropar från annan tråd).

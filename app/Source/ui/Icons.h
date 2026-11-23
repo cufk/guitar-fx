@@ -8,7 +8,7 @@ namespace ui::icons {
 
 void drawEffect(juce::Graphics& g, const std::string& effectId, juce::Rectangle<float> r, juce::Colour c);
 
-enum class Symbol { Sliders, More, Plus, Prev, Next, ChevronDown, ChevronUp, Check, Speaker, Waveform };
+enum class Symbol { Sliders, More, Plus, Prev, Next, ChevronDown, ChevronUp, Check, Speaker, Waveform, ArrowUp, Dot };
 void draw(juce::Graphics& g, Symbol s, juce::Rectangle<float> r, juce::Colour c, float strokeWidth = 1.8f);
 
 } // namespace ui::icons

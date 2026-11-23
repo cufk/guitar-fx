@@ -83,6 +83,52 @@ void drawEffect(juce::Graphics& g, const std::string& id, juce::Rectangle<float>
         const float rr = box.getWidth() * 0.3f;
         p.addEllipse(box.getCentreX() - rr, box.getY() + box.getHeight() * 0.58f - rr, rr * 2, rr * 2);
         g.fillEllipse(box.getCentreX() - sw, box.getY() + box.getHeight() * 0.2f - sw, sw * 2, sw * 2);
+    } else if (id == "body") {
+        // Gitarrkropp: liten övre bukt, midja, större nedre bukt och ljudhål.
+        const float cx = x0 + w * 0.5f;
+        p.addEllipse(cx - w * 0.24f, y0 + h * 0.04f, w * 0.48f, h * 0.42f);
+        p.addEllipse(cx - w * 0.34f, y0 + h * 0.36f, w * 0.68f, h * 0.6f);
+        g.strokePath(p, stroke(sw));
+        p.clear();
+        g.fillEllipse(cx - sw * 1.5f, y0 + h * 0.6f - sw * 1.5f, sw * 3.0f, sw * 3.0f);
+        return;
+    } else if (id == "feedback") {
+        // Plan linje med en smal notch nedåt.
+        const float cy = y0 + h * 0.4f;
+        p.startNewSubPath(x0 + w * 0.05f, cy);
+        p.lineTo(x0 + w * 0.36f, cy);
+        p.lineTo(x0 + w * 0.5f, y0 + h * 0.9f);
+        p.lineTo(x0 + w * 0.64f, cy);
+        p.lineTo(x0 + w * 0.95f, cy);
+    } else if (id == "doubler") {
+        // Två överlappande cirklar.
+        const float rr = w * 0.26f;
+        p.addEllipse(x0 + w * 0.36f - rr, y0 + h * 0.5f - rr, rr * 2, rr * 2);
+        p.addEllipse(x0 + w * 0.64f - rr, y0 + h * 0.5f - rr, rr * 2, rr * 2);
+    } else if (id == "tremolo") {
+        // Våg vars amplitud växer och avtar.
+        const int n = 48;
+        for (int i = 0; i <= n; ++i) {
+            const float t = static_cast<float>(i) / n;
+            const float env = 0.25f + 0.75f * std::sin(3.14159265f * t);
+            const float y = y0 + h * 0.5f - env * h * 0.4f * std::sin(6.2831853f * 3.0f * t);
+            if (i == 0) p.startNewSubPath(x0 + w * (0.05f + 0.9f * t), y); else p.lineTo(x0 + w * (0.05f + 0.9f * t), y);
+        }
+    } else if (id == "delay") {
+        // Ekon: prickar som blir mindre och svagare.
+        for (int i = 0; i < 4; ++i) {
+            const float rr = sw * (1.7f - 0.3f * static_cast<float>(i));
+            g.setColour(c.withAlpha(1.0f - 0.22f * static_cast<float>(i)));
+            g.fillEllipse(x0 + w * (0.14f + 0.24f * static_cast<float>(i)) - rr, y0 + h * 0.5f - rr, rr * 2, rr * 2);
+        }
+        return;
+    } else if (id == "volume") {
+        // Stigande staplar.
+        for (int i = 0; i < 4; ++i) {
+            const float x = x0 + w * (0.17f + 0.22f * static_cast<float>(i));
+            p.startNewSubPath(x, y0 + h * 0.9f);
+            p.lineTo(x, y0 + h * (0.68f - 0.18f * static_cast<float>(i)));
+        }
     }
     g.strokePath(p, stroke(sw));
 }
@@ -93,6 +139,13 @@ void draw(juce::Graphics& g, Symbol s, juce::Rectangle<float> r, juce::Colour c,
     const float k = juce::jmin(r.getWidth(), r.getHeight()) * 0.5f;
     juce::Path p;
     switch (s) {
+        case Symbol::Dot:
+            g.fillEllipse(ctr.x - k * 0.4f, ctr.y - k * 0.4f, k * 0.8f, k * 0.8f);
+            return;
+        case Symbol::ArrowUp:
+            p.startNewSubPath(ctr.x, ctr.y + k * 0.7f); p.lineTo(ctr.x, ctr.y - k * 0.7f);
+            p.startNewSubPath(ctr.x - k * 0.5f, ctr.y - k * 0.2f); p.lineTo(ctr.x, ctr.y - k * 0.7f); p.lineTo(ctr.x + k * 0.5f, ctr.y - k * 0.2f);
+            break;
         case Symbol::More:
             for (int i = -1; i <= 1; ++i) g.fillEllipse(ctr.x + i * k * 0.6f - 2.0f, ctr.y - 2.0f, 4.0f, 4.0f);
             return;

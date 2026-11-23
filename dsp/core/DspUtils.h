@@ -46,6 +46,9 @@ private:
 
 inline bool isFiniteSample(float x) { return std::isfinite(x); }
 
+// Exakt likhet utan -Wfloat-equal (för "har värdet ändrats?"-kontroller, inte för beräkningar).
+inline bool sameValue(float a, float b) noexcept { return !(a < b) && !(a > b); }
+
 // Rationell tanh-approximation: exakt ±1 och derivata 0 vid |x| = 3, ≈ x för små x.
 // Används i waveshapers och för att begränsa återkopplingsslingor.
 inline float softClip(float x) noexcept {

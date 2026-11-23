@@ -15,6 +15,7 @@ GuitarFXEditor::GuitarFXEditor(GuitarFXProcessor& p)
     juce::LookAndFeel::setDefaultLookAndFeel(&lnf_);
 
     header_.more.onClick = [this] { showMoreMenu(); };
+    header_.boost.onClick = [this] { processor_.toggleBoost(); };
     setlist_.analyse.onClick = [this] { setAnalysisOpen(!analysisView_.isOpen()); };
     analysisView_.onClose = [this] { setAnalysisOpen(false); };
 
@@ -67,6 +68,14 @@ void GuitarFXEditor::timerCallback() {
     auto& e = processor_.engine();
     meter_.update();
     grid_.refresh();
+    // Boost: svart när den är på, visar hur mycket den höjer.
+    auto& vol = processor_.volume();
+    const bool boostOn = vol.boostOn();
+    if (header_.boost.getToggleState() != boostOn) header_.boost.setToggleState(boostOn, juce::dontSendNotification);
+    const float bdb = vol.boostDb.get();
+    const auto boostText = "+" + juce::String(bdb, gfx::sameValue(bdb, std::floor(bdb)) ? 0 : 1).replaceCharacter('.', ',') + " dB";
+    if (header_.boost.suffix != boostText) { header_.boost.suffix = boostText; header_.boost.repaint(); }
+    if (meter_.pillWidth() != meterPillWidth_) resized();   // ingångsläget ändrat
     panel_.refresh();
     setlist_.refresh();
 
@@ -110,6 +119,11 @@ void GuitarFXEditor::resized() {
     auto head = r.removeFromTop(56);
     header_.setBounds(head);
     meter_.setBounds(head.withTrimmedRight(ui::size::button + 16).removeFromRight(440));   // vänster om ⋯
+    // Boost direkt till vänster om nivåmätaren.
+    meterPillWidth_ = meter_.pillWidth();
+    const int boostW = 150, b = ui::size::button;
+    const int boostRight = meter_.getRight() - meterPillWidth_ - 16 - head.getX();
+    header_.boost.setBounds(boostRight - boostW, (head.getHeight() - b) / 2, boostW, b);
     r.removeFromTop(24);
     tuner_.setBounds(r.removeFromBottom(72));
     r.removeFromBottom(24);
@@ -132,6 +146,8 @@ bool GuitarFXEditor::keyPressed(const juce::KeyPress& k) {
     auto& rig = processor_.rig();
     const auto c = k.getTextCharacter();
     if (c == 't' || c == 'T') { tuner_.toggleMute(); return true; }
+    if (c == 'b' || c == 'B') { processor_.toggleBoost(); return true; }
+    if (k == juce::KeyPress::spaceKey) { processor_.tapTempo(); return true; }
     if (analysisView_.isOpen() && k == juce::KeyPress::escapeKey) { setAnalysisOpen(false); return true; }
     if (c >= '1' && c <= '9') { rig.select(static_cast<int>(c - '1')); return true; }
     if (c == '0' || k == juce::KeyPress::escapeKey) { rig.activate(-1); return true; }
@@ -181,6 +197,8 @@ void GuitarFXEditor::showMoreMenu() {
     help.addItem(31, S("MIDI Program Change 0–8 = preset 1–9"), false);
     help.addItem(32, S("MIDI CC 102/103 = föregående/nästa, 104 = grundljud"), false);
     help.addItem(33, S("T eller MIDI CC 105 = Mute (stämning)"), false);
+    help.addItem(34, S("B eller MIDI CC 106 = Boost på/av"), false);
+    help.addItem(35, S("Mellanslag eller MIDI CC 107 = Tap tempo (delay)"), false);
     m.addSubMenu(S("Fotswitch och tangenter"), help);
     juce::Component::SafePointer<GuitarFXEditor> safe(this);
     m.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&header_.more).withMinimumWidth(240), [safe](int r) {

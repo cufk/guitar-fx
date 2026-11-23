@@ -1,4 +1,9 @@
-# Stagebox
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="app/Resources/logo/stagebox-logo-dark.png">
+    <img alt="Stagebox" src="app/Resources/logo/stagebox-logo-light.png" width="320">
+  </picture>
+</h1>
 
 (Tidigare *GuitarFX*. Repot på GitHub heter fortfarande `guitar-fx`.)
 
@@ -20,6 +25,21 @@ Raspberry Pi eller egen pedal.
   tryck igen för att gå tillbaka till grundljudet. Styrs med knapparna, tangenter eller
   MIDI-fotswitch (även Bluetooth). Reverbsvansen klingar ut naturligt vid byte.
 - **EQ:** lågskärning, bas, mitt (valbar frekvens), diskant och smal notch mot rundgång.
+- **Rundgångsskydd:** lyssnar efter toner som ringer upp (rena toner utan övertoner som inte
+  klingar av) och lägger smala filter (Q 30) på just de frekvenserna – −9 dB först, djupare
+  om tonen fortsätter. Vanligt spel lämnas orört. Upp till 8 filter; de syns som staplar i
+  panelen och **Nollställ** tömmer dem (t.ex. efter soundcheck). På i grundljudet. Ingen latens.
+- **Kropp (kroppsklang):** gör den inbyggda pickupens hårda ljud mer likt en mikrofon –
+  kroppens resonanser och mindre "kvack". Typerna Dreadnought, Jumbo, Auditorium och Parlor,
+  mängd och luft.
+- **Dubblare och oktav:** två svävande röster i stereo (som två tagningar) och oktav upp för
+  en tolvsträngad känsla.
+- **Tremolo:** hastighet, djup, form (mjuk–hård) och stereo (vänster/höger i motfas).
+- **Delay:** tempo (BPM) och indelning (1/4, 1/8 punkterad, 1/8, 1/16), återkoppling,
+  dämpning och mix. **Tap tempo** med knappen i delayns panel, mellanslag eller fotswitch
+  (MIDI CC 107). Låtanalysen sätter delayns tempo efter låten. Svansen klingar ut vid byte.
+- **Volym och boost:** nivå per preset (så att alla låtar låter lika starkt) och en solo-boost
+  uppe till höger (B / MIDI CC 106) som höjer med inställd mängd oavsett preset.
 - **Låtanalys → preset:** välj en låt (WAV/AIFF/FLAC/MP3/M4A). Appen analyserar klang,
   rum, bredd, dynamik och tempo lokalt och föreslår ett preset med låtens namn.
 - **Stämapparat alltid synlig:** ett lågt fält längst ned visar ton, skala −50…+50 cent,
@@ -31,7 +51,7 @@ Raspberry Pi eller egen pedal.
 - **Widener:** bredare stereo med mitt/sida-teknik – exakt monokompatibel (L+R = originalet).
 - **Utgång Stereo / Mono (summa):** mono om bara en kanal går till mixern.
 - **Monokromt GUI med lodräta reglage:** varm off-white (eller mörkt), ett gemensamt rutnät,
-  presets som en setlist till vänster, effekterna som rutor (svart = på) och reglagen i lika
+  presets som en setlist till vänster, effekterna som rutor i sju kolumner (svart = på) och reglagen i lika
   stora rutor som fyller höjden;
   en smal nivåmätare i sidhuvudet visar bara de ingångar som används. Eget appfönster utan JUCE:s "Options"-rad. Utseende: följ
   systemet, ljust eller mörkt (⋯ → Utseende). Typsnitt: Inter (inbäddat, OFL-licens).
@@ -224,6 +244,8 @@ Appen startar med exempel – *Stor hall*, *Chorus* och *Flanger-svep* – att �
 | MIDI **Program Change 0–8** | Preset 1–9 |
 | MIDI **CC 102 / 103 / 104** (värde ≥ 64) | Föregående / nästa / grundljud |
 | Tangent **T** eller MIDI **CC 105** | Mute (stämning) på/av |
+| Tangent **B** eller MIDI **CC 106** | Boost på/av |
+| **Mellanslag** eller MIDI **CC 107** | Tap tempo (delay) |
 
 MIDI-ingångar (även Bluetooth-MIDI-pedaler som parats i macOS *Ljud-MIDI-inställningar*)
 öppnas automatiskt. Ljudkort och MIDI väljs under **⋯ → Ljudinställningar…**. Pedaler som i stället
@@ -299,8 +321,8 @@ referens när effekterna utvecklas.
 7. ✅ Sustain (kompressor), widener, mono-utgång, monokromt GUI (nu med lodräta reglage)
 8. ✅ Stämapparat
 9. ✅ Låtanalys → förslag på preset (signalanalys, lokalt)
-10. Delay
-11. Kroppssimulering för inbyggd mikrofon (IR via befintlig faltning)
+10. ✅ Delay med tap tempo, rundgångsskydd, kroppsklang, dubblare/oktav, tremolo, volym/boost
+11. Looper; egna kropps-IR:er (faltning) som tillval
 12. MIDI learn (valfria meddelanden per preset), scenläge med extra stora knappar
 13. iOS-bygge och live-härdning (ljudsessionsavbrott, återanslutning av ljudkort)
 14. (Valfritt) Raspberry Pi / Daisy Seed
