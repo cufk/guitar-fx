@@ -39,6 +39,8 @@ Driftsäkerhet live är huvudkravet. Svara på svenska.
   Nollställ + `FilterView` för rundgångsskyddet.
   Reglagen: en rad med sju lika breda platser (`kControlColumns`) som fyller höjden – samma
   storlek oavsett effekt. InputPanel använder fortfarande runda rattar (`KnobTile(spec, false)`).
+  Val (`ParamSpec::choices`, t.ex. kroppstyp, distortion-typ, delayns indelning) visas som
+  rullgardin (`Pill::chevron` + PopupMenu) i rubrikraden närmast av/på-reglaget – inte som reglageruta.
 - Stämapparat: lågt fält längst ned (`TunerStrip`), stämningar i `ui::tunings()`, valet och
   A4 sparas i processorns state. `engine/TunerTap.h` (ljudtråden kopierar torr ingång till
   ringbuffert; "Mute" gäller bara medan GUI:t är öppet) + `dsp/core/PitchDetector.h` (YIN).
