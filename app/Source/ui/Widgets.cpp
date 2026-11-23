@@ -727,7 +727,7 @@ void SetlistPanel::paint(juce::Graphics& g) {
         if (row > 0) {
             auto h = inner.removeFromRight(22).toFloat().withSizeKeepingCentre(16.0f, 12.0f);
             g.setColour(sub.withAlpha(hover_ == presetIndex || floating ? 1.0f : 0.45f));
-            for (int k = 0; k < 3; ++k) g.fillRoundedRectangle(h.getX(), h.getY() + k * 5.0f, h.getWidth(), 2.0f, 1.0f);
+            for (int k = 0; k < 3; ++k) g.fillRoundedRectangle(h.getX(), h.getY() + static_cast<float>(k) * 5.0f, h.getWidth(), 2.0f, 1.0f);
         }
         juce::String name, names;
         if (row == 0) {
@@ -921,7 +921,7 @@ void InputMeter::paint(juce::Graphics& g) {
     const int labelW = 30, barW = n > 1 ? 110 : 140, segGap = 22, pad = 18;
     const int w = pillWidth();
     auto pill = getLocalBounds().removeFromRight(w).withSizeKeepingCentre(w, size::button);
-    drawTile(g, pill.toFloat(), pill.getHeight() * 0.5f, p.tile);
+    drawTile(g, pill.toFloat(), static_cast<float>(pill.getHeight()) * 0.5f, p.tile);
     auto r = pill.reduced(pad, 0);
     for (int ch : chans) {
         auto seg = r.removeFromLeft(labelW + 10 + barW);
@@ -1274,7 +1274,7 @@ void TunerStrip::paint(juce::Graphics& g) {
     const float cw = ns > 0 ? st.getWidth() / static_cast<float>(ns) : 0.0f;
     for (int i = 0; i < ns; ++i) {
         const auto name = juce::String(gfx::noteFromHz(gfx::hzFromMidi(tuning.strings[size_t(i)])).name);
-        auto c = juce::Rectangle<float>(st.getX() + cw * i, st.getY(), cw, st.getHeight())
+        auto c = juce::Rectangle<float>(st.getX() + cw * static_cast<float>(i), st.getY(), cw, st.getHeight())
                      .withSizeKeepingCentre(name.length() > 1 ? 32.0f : 26.0f, 26.0f);
         const bool sel = i == nearest_;
         if (sel) { g.setColour(ink); g.fillRoundedRectangle(c, 13.0f); }

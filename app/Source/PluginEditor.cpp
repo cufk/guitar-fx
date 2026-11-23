@@ -114,7 +114,7 @@ void GuitarFXEditor::paintOverChildren(juce::Graphics& g) {
     auto r = juce::Rectangle<int>(w, 44).withCentre({ getWidth() / 2, header_.getBounds().getCentreY() });
     ui::drawTile(g, r.toFloat(), 22.0f, ui::palette().danger);
     g.setColour(juce::Colours::white);
-    g.fillEllipse(r.getX() + 18.0f, r.getCentreY() - 4.0f, 8.0f, 8.0f);
+    g.fillEllipse(static_cast<float>(r.getX()) + 18.0f, static_cast<float>(r.getCentreY()) - 4.0f, 8.0f, 8.0f);
     g.setFont(ui::font(15.0f, ui::Weight::SemiBold));
     g.drawText(text, r.withTrimmedLeft(24), juce::Justification::centred);
 }

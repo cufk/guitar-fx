@@ -127,7 +127,7 @@ SongAnalysis analyseSong(const float* left, const float* right, int numSamples, 
     const int hop = std::max(1, static_cast<int>(sr * 0.01));
     const int nFrames = numSamples / hop;
     std::vector<float> envDb(static_cast<size_t>(nFrames));
-    double ms = 0.0, ss = 0.0, msSum = 0.0, lrSum = 0.0, llSum = 0.0, rrSum = 0.0;
+    double ms = 0.0, ss = 0.0, lrSum = 0.0, llSum = 0.0, rrSum = 0.0;
     for (int f = 0; f < nFrames; ++f) {
         double e = 0.0;
         for (int i = f * hop; i < (f + 1) * hop; ++i) {
@@ -137,7 +137,6 @@ SongAnalysis analyseSong(const float* left, const float* right, int numSamples, 
             ms += m * m; ss += s * s;
             lrSum += l * r; llSum += l * l; rrSum += r * r;
         }
-        msSum += e;
         envDb[size_t(f)] = static_cast<float>(10.0 * std::log10(e / hop + 1e-12));
     }
     if (!report(0.7f)) return {};

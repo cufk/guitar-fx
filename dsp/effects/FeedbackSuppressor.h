@@ -206,7 +206,7 @@ private:
             const float a = at(k - 1), b = at(k), c = at(k + 1);
             const float den = a - 2.0f * b + c;
             const float p = std::fabs(den) > 1e-6f ? std::clamp(0.5f * (a - c) / den, -0.5f, 0.5f) : 0.0f;
-            trigger(static_cast<float>((k + p) * sr_ / kFftSize));
+            trigger(static_cast<float>((static_cast<double>(k) + static_cast<double>(p)) * sr_ / kFftSize));
         }
     }
 

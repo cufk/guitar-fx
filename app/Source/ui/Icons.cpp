@@ -28,7 +28,7 @@ void drawEffect(juce::Graphics& g, const std::string& id, juce::Rectangle<float>
         // Tre reglage med knoppar på olika höjd.
         const float knob[3] = { 0.65f, 0.3f, 0.5f };
         for (int i = 0; i < 3; ++i) {
-            const float x = x0 + w * (0.2f + 0.3f * i);
+            const float x = x0 + w * (0.2f + 0.3f * static_cast<float>(i));
             p.startNewSubPath(x, y0 + h * 0.1f); p.lineTo(x, y0 + h * 0.9f);
             g.fillEllipse(x - sw * 1.4f, y0 + h * knob[i] - sw * 1.4f, sw * 2.8f, sw * 2.8f);
         }
@@ -147,7 +147,7 @@ void draw(juce::Graphics& g, Symbol s, juce::Rectangle<float> r, juce::Colour c,
             p.startNewSubPath(ctr.x - k * 0.5f, ctr.y - k * 0.2f); p.lineTo(ctr.x, ctr.y - k * 0.7f); p.lineTo(ctr.x + k * 0.5f, ctr.y - k * 0.2f);
             break;
         case Symbol::More:
-            for (int i = -1; i <= 1; ++i) g.fillEllipse(ctr.x + i * k * 0.6f - 2.0f, ctr.y - 2.0f, 4.0f, 4.0f);
+            for (int i = -1; i <= 1; ++i) g.fillEllipse(ctr.x + static_cast<float>(i) * k * 0.6f - 2.0f, ctr.y - 2.0f, 4.0f, 4.0f);
             return;
         case Symbol::Plus:
             p.startNewSubPath(ctr.x - k * 0.6f, ctr.y); p.lineTo(ctr.x + k * 0.6f, ctr.y);
@@ -171,7 +171,7 @@ void draw(juce::Graphics& g, Symbol s, juce::Rectangle<float> r, juce::Colour c,
         case Symbol::Sliders: {
             const float knobs[3] = { 0.3f, -0.35f, 0.1f };
             for (int i = 0; i < 3; ++i) {
-                const float y = ctr.y + (i - 1) * k * 0.5f;
+                const float y = ctr.y + static_cast<float>(i - 1) * k * 0.5f;
                 p.startNewSubPath(ctr.x - k * 0.65f, y); p.lineTo(ctr.x + k * 0.65f, y);
                 g.fillEllipse(ctr.x + knobs[i] * k - 3.0f, y - 3.0f, 6.0f, 6.0f);
             }

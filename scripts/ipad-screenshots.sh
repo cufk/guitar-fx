@@ -15,7 +15,7 @@ cmake -B "$BUILD_DIR" -G Xcode -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_DEPLOYMENT_TA
 xcodebuild -project "$BUILD_DIR/Stagebox.xcodeproj" -scheme Stagebox_Standalone -configuration Debug \
            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
            CODE_SIGNING_ALLOWED=NO -quiet build
-APP=$(find "$BUILD_DIR" -path "*iphonesimulator*" -name "Stagebox.app" -type d | head -1)
+APP=$(find "$BUILD_DIR" -path "*Standalone*" -name "Stagebox.app" -type d | head -1)
 [ -d "$APP" ] || { echo "Hittar inte Stagebox.app för simulatorn"; exit 1; }
 echo "App: $APP"
 

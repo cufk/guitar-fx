@@ -52,7 +52,7 @@ public:
     void closeButtonPressed() override { juce::JUCEApplication::getInstance()->systemRequestedQuit(); }
 
 private:
-    juce::StandalonePluginHolder& holder_;
+    [[maybe_unused]] juce::StandalonePluginHolder& holder_;   // används inte på iPad
 };
 
 class StageboxApp final : public juce::JUCEApplication, private juce::Timer {
