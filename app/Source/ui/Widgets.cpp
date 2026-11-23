@@ -1,4 +1,5 @@
 #include "Widgets.h"
+#include <algorithm>
 
 namespace ui {
 
@@ -72,6 +73,10 @@ Pill::Pill(const juce::String& label, bool toggle) : juce::Button(label) {
     setMouseCursor(juce::MouseCursor::PointingHandCursor);
 }
 
+float Pill::naturalTextWidth() const {
+    return textWidth(font(getHeight() >= 44 ? 15.0f : 13.5f, Weight::SemiBold), getButtonText());
+}
+
 void Pill::paintButton(juce::Graphics& g, bool over, bool down) {
     const auto& p = palette();
     const bool on = getToggleState();
@@ -86,16 +91,34 @@ void Pill::paintButton(juce::Graphics& g, bool over, bool down) {
     auto ink = !isEnabled() ? p.tertiaryInk : on ? p.inkInverse : p.ink;
     if (isEnabled() && on && !onText.isTransparent()) ink = onText;
     if (isEnabled() && !on && !offText.isTransparent()) ink = offText;
-    const auto f = font(r.getHeight() >= 44.0f ? 15.0f : 13.5f, Weight::SemiBold);
+    const float baseSize = (r.getHeight() >= 44.0f ? 15.0f : 13.5f) * fontScale;
+    auto f = font(baseSize, Weight::SemiBold);
     const juce::String label = getButtonText();
     float w = textWidth(f, label);
+    // Smala knappar (t.ex. val i en smal reglageruta): krymp texten upp till 25 % i stället för att korta av.
+    if (!showSymbol && prefix.isEmpty() && suffix.isEmpty() && w > r.getWidth() - 28.0f) {
+        f = font(baseSize * juce::jlimit(0.72f, 1.0f, (r.getWidth() - 12.0f) / w), Weight::SemiBold);
+        w = textWidth(f, label);
+        if (w > r.getWidth() - 12.0f) {   // fortfarande för bred: centrera och låt drawText korta av
+            g.setColour(!isEnabled() ? p.tertiaryInk : on ? p.inkInverse : p.ink);
+            g.setFont(f);
+            g.drawText(label, r.reduced(6.0f, 0.0f), juce::Justification::centred, true);
+            return;
+        }
+        g.setColour(!isEnabled() ? p.tertiaryInk : on ? p.inkInverse : p.ink);
+        g.setFont(f);
+        g.drawText(label, r, juce::Justification::centred, false);
+        return;
+    }
     const auto pf = font(f.getHeight(), Weight::Regular);
     const float pw = prefix.isNotEmpty() ? textWidth(pf, prefix) + 10.0f : 0.0f;
     const float sw = showSymbol ? 22.0f : 0.0f;
-    const float total = juce::jmin(r.getWidth() - 28.0f, w + pw + sw);
+    const auto sf = font(f.getHeight(), Weight::Regular);
+    const float xw = suffix.isNotEmpty() ? textWidth(sf, suffix) + 8.0f : 0.0f;
+    const float total = juce::jmin(r.getWidth() - 28.0f, w + pw + sw + xw);
     float x = r.getCentreX() - total * 0.5f;
     if (showSymbol) {
-        icons::draw(g, symbol, { x, r.getCentreY() - 7.0f, 14.0f, 14.0f }, ink, 1.7f);
+        icons::draw(g, symbol, { x, r.getCentreY() - 7.0f, 14.0f, 14.0f }, ink.withMultipliedAlpha(symbolAlpha), 1.7f);
         x += sw;
     }
     if (prefix.isNotEmpty()) {
@@ -107,6 +130,11 @@ void Pill::paintButton(juce::Graphics& g, bool over, bool down) {
     g.setColour(ink);
     g.setFont(f);
     g.drawText(label, juce::Rectangle<float>(x, r.getY(), r.getRight() - 14.0f - x, r.getHeight()), juce::Justification::centredLeft, true);
+    if (suffix.isNotEmpty()) {
+        g.setColour(on ? ink.withAlpha(0.7f) : p.secondaryInk);
+        g.setFont(sf);
+        g.drawText(suffix, juce::Rectangle<float>(x + w + 8.0f, r.getY(), xw, r.getHeight()), juce::Justification::centredLeft, false);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -226,6 +254,11 @@ void KnobTile::resized() {
             const int h = juce::jmin(34, (r.getHeight() - 8 * (n - 1)) / n);
             auto col = r.withSizeKeepingCentre(r.getWidth(), n * (h + 8) - 8);
             for (auto& c : choices_) { c->setBounds(col.removeFromTop(h)); col.removeFromTop(8); }
+            // Samma textstorlek för alla val: krymp efter det längsta (högst 28 %).
+            float widest = 0.0f;
+            for (auto& c : choices_) widest = juce::jmax(widest, c->naturalTextWidth());
+            const float scale = widest > 0.0f ? juce::jlimit(0.72f, 1.0f, static_cast<float>(r.getWidth() - 28) / widest) : 1.0f;
+            for (auto& c : choices_) if (!gfx::sameValue(c->fontScale, scale)) { c->fontScale = scale; c->repaint(); }
         } else {
             knob_.setBounds(r);
         }
@@ -255,7 +288,7 @@ EffectGrid::EffectGrid(GuitarFXProcessor& proc, std::function<void(int)> onSelec
 }
 
 juce::Rectangle<int> EffectGrid::cell(int pos) const {
-    const int cols = kGridColumns, gap = kGridGap;
+    const int cols = kControlColumns, gap = kGridGap;   // samma sju kolumner som reglagen
     const int top = size::sectionHead + size::sectionGap;
     const int w = (getWidth() - gap * (cols - 1)) / cols;
     return { (pos % cols) * (w + gap), top + (pos / cols) * (kTileH + gap), w, kTileH };
@@ -279,18 +312,26 @@ void EffectGrid::paint(juce::Graphics& g) {
         // Svart = på (samma betydelse som aktiv rad i setlistan).
         drawTile(g, r, 16.0f, on ? p.ink.interpolatedWith(p.background, hover ? 0.12f : 0.0f) : (hover ? p.tileStrong : p.tile));
         const auto ink = on ? p.inkInverse : p.ink;
-        auto inner = r.reduced(16.0f, 14.0f);
-        icons::drawEffect(g, e.id, inner.removeFromTop(22.0f).removeFromLeft(22.0f), ink);
-        auto dot = juce::Rectangle<float>(r.getRight() - 26.0f, r.getY() + 20.0f, 10.0f, 10.0f);
+        auto inner = r.reduced(12.0f, 0.0f).withTrimmedTop(12.0f).withTrimmedBottom(10.0f);
+        icons::drawEffect(g, e.id, inner.removeFromTop(20.0f).removeFromLeft(20.0f), ink);
+        auto dot = juce::Rectangle<float>(r.getRight() - 21.0f, r.getY() + 17.5f, 9.0f, 9.0f);
         if (on) { g.setColour(ink); g.fillEllipse(dot); }
         else { g.setColour(p.secondaryInk); g.drawEllipse(dot.reduced(0.75f), 1.5f); }
+        // Namn och under det en rad för märkning (I PRESET / antal filter).
+        auto tag = inner.removeFromBottom(12.0f);
         g.setColour(ink);
-        g.setFont(font(15.0f, Weight::SemiBold));
-        g.drawText(u8(e.name), inner.toNearestInt(), juce::Justification::bottomLeft, true);
-        if (proc_.rig().activeIncludes(e.id)) {
+        g.setFont(font(13.5f, Weight::SemiBold));
+        g.drawFittedText(u8(e.name), inner.removeFromBottom(18.0f).toNearestInt(), juce::Justification::bottomLeft, 1, 0.8f);
+        juce::String mark;
+        if (e.id == "feedback" && on && e.activity) {
+            const int n = juce::roundToInt(e.activity());
+            if (n > 0) mark = juce::String(n) + " FILTER";
+        }
+        if (mark.isEmpty() && proc_.rig().activeIncludes(e.id)) mark = S("I PRESET");
+        if (mark.isNotEmpty()) {
             g.setColour(on ? p.inkInverse.withAlpha(0.65f) : p.secondaryInk);
-            g.setFont(captionFont());
-            g.drawText(S("I PRESET"), inner.toNearestInt(), juce::Justification::bottomRight, false);
+            g.setFont(font(9.5f, Weight::SemiBold).withExtraKerningFactor(0.08f));
+            g.drawText(mark, tag.toNearestInt(), juce::Justification::centredLeft, false);
         }
     }
 }
@@ -309,7 +350,7 @@ void EffectGrid::mouseMove(const juce::MouseEvent& e) {
 // ---------------------------------------------------------------------------
 // EffectPanel
 // ---------------------------------------------------------------------------
-EffectPanel::EffectPanel(GuitarFXProcessor& proc) : proc_(proc) {
+EffectPanel::EffectPanel(GuitarFXProcessor& proc) : proc_(proc), filters_(proc) {
     switch_.onClick = [this] {
         if (index_ >= 0) proc_.engine().chain().setEnabled(proc_.rig().effects()[size_t(index_)].slot, switch_.getToggleState());
     };
@@ -332,6 +373,15 @@ EffectPanel::EffectPanel(GuitarFXProcessor& proc) : proc_(proc) {
     builtInIr_->onClick = [this] { proc_.useBuiltInImpulseResponse(); irStatus_.clear(); };
     addChildComponent(*loadIr_);
     addChildComponent(*builtInIr_);
+    tap_.symbol = icons::Symbol::Dot;
+    tap_.showSymbol = true;
+    tap_.setTooltip(S("Tryck i takt för delayns tempo (mellanslag / fotswitch CC 107)"));
+    tap_.onClick = [this] { proc_.tapTempo(); };
+    resetFilters_.setTooltip(S("Ta bort alla filter, t.ex. efter soundcheck eller på en ny scen"));
+    resetFilters_.onClick = [this] { proc_.feedbackSuppressor().requestReset(); };
+    addChildComponent(tap_);
+    addChildComponent(resetFilters_);
+    addChildComponent(filters_);
     show(0);
 }
 
@@ -344,9 +394,12 @@ void EffectPanel::show(int i) {
         tiles_.push_back(std::make_unique<KnobTile>(p));
         addAndMakeVisible(*tiles_.back());
     }
-    const bool cab = effects[size_t(i)].id == "cabinet";
-    loadIr_->setVisible(cab);
-    builtInIr_->setVisible(cab);
+    const auto& id = effects[size_t(i)].id;
+    loadIr_->setVisible(id == "cabinet");
+    builtInIr_->setVisible(id == "cabinet");
+    tap_.setVisible(id == "delay");
+    resetFilters_.setVisible(id == "feedback");
+    filters_.setVisible(id == "feedback");
     refresh();
     resized();
     repaint();
@@ -365,6 +418,17 @@ void EffectPanel::refresh() {
     if (presetPill_.showSymbol != included) { presetPill_.showSymbol = included; presetPill_.repaint(); }
     activity_ = (on && e.activity) ? e.activity() : 0.0f;
     for (auto& t : tiles_) t->refresh();
+    if (tap_.isVisible()) {
+        // Tempo som text och en prick som blinkar på varje taktslag (räknat från senaste tap).
+        const float bpm = proc_.delay().tempoBpm.get();
+        const auto text = juce::String(juce::roundToInt(bpm)) + " BPM";
+        if (tap_.suffix != text) { tap_.suffix = text; tap_.repaint(); }
+        const double beat = 60000.0 / juce::jmax(1.0f, bpm);
+        const double since = juce::Time::getMillisecondCounterHiRes() - proc_.lastTapMs();
+        const float alpha = std::fmod(since, beat) < 90.0 ? 1.0f : 0.25f;
+        if (!gfx::sameValue(tap_.symbolAlpha, alpha)) { tap_.symbolAlpha = alpha; tap_.repaint(); }
+    }
+    if (filters_.isVisible()) filters_.repaint();
     repaint(0, 0, getWidth(), kHead);
 }
 
@@ -382,22 +446,29 @@ void EffectPanel::paint(juce::Graphics& g) {
     int right = switch_.getX();
     if (presetPill_.isVisible()) right = presetPill_.getX();
     if (loadIr_->isVisible()) right = loadIr_->getX();
+    if (tap_.isVisible()) right = tap_.getX();
+    if (resetFilters_.isVisible()) right = resetFilters_.getX();
     auto head = juce::Rectangle<int>(0, kHead - size::sectionHead, juce::jmax(0, right - 24), size::sectionHead);
 
+    const juce::String title = u8(e.title.empty() ? e.name : e.title);
     juce::String status;
     if (rig.activePreset() < 0) status = on ? S("På i grundljudet") : S("Av");
     else if (rig.activeIncludes(e.id)) status = (on ? S("På") : S("Av")) + S(" · sparas i presetet ”") + u8(rig.activeName()) + S("”");
     else status = on ? S("På · följer grundljudet – ändra för att spara i presetet") : S("Av · följer grundljudet – slå på eller ändra för att spara i presetet");
     if (e.id == "cabinet") status << S(" · ") << u8(proc_.cabinet().impulseResponseName());
-    if (activity_ < -0.5f) status << S(" · ") << juce::String(juce::roundToInt(-activity_)) << S(" dB kompression");
+    if (e.id == "sustain" && activity_ < -0.5f) status << S(" · ") << juce::String(juce::roundToInt(-activity_)) << S(" dB kompression");
+    if (e.id == "feedback" && on) {
+        const int n = juce::roundToInt(activity_);
+        status << S(" · ") << (n == 0 ? S("inga filter än") : juce::String(n) + (n == 1 ? S(" filter aktivt") : S(" filter aktiva")));
+    }
     if (irStatus_.isNotEmpty()) {
-        drawSectionHeading(g, head, u8(e.name), {});
+        drawSectionHeading(g, head, title, {});
         g.setColour(p.danger);
         g.setFont(font(13.0f));
-        g.drawText(irStatus_, head.withTrimmedLeft(static_cast<int>(textWidth(font(22.0f, Weight::SemiBold), u8(e.name))) + 10).translated(0, 3),
+        g.drawText(irStatus_, head.withTrimmedLeft(static_cast<int>(textWidth(font(22.0f, Weight::SemiBold), title)) + 10).translated(0, 3),
                    juce::Justification::centredLeft, true);
     } else {
-        drawSectionHeading(g, head, u8(e.name), status);
+        drawSectionHeading(g, head, title, status);
     }
 }
 
@@ -416,6 +487,8 @@ void EffectPanel::resized() {
         head.removeFromRight(8);
         loadIr_->setBounds(head.removeFromRight(110).withSizeKeepingCentre(110, sb));
     }
+    if (tap_.isVisible()) tap_.setBounds(head.removeFromRight(130).withSizeKeepingCentre(130, sb));
+    if (resetFilters_.isVisible()) resetFilters_.setBounds(head.removeFromRight(104).withSizeKeepingCentre(104, sb));
     r.removeFromTop(size::sectionGap);
 
     const int n = static_cast<int>(tiles_.size());
@@ -429,6 +502,54 @@ void EffectPanel::resized() {
     const int h = (r.getHeight() - gap * (rows - 1)) / rows;
     for (int i = 0; i < n; ++i)
         tiles_[size_t(i)]->setBounds(r.getX() + (i % cols) * (w + gap), r.getY() + (i / cols) * (h + gap), w, h);
+    // Rundgångsskydd: filtervyn tar de lediga platserna i raden.
+    if (filters_.isVisible() && n < cols)
+        filters_.setBounds(r.getX() + n * (w + gap), r.getY(), r.getRight() - (r.getX() + n * (w + gap)), h);
+}
+
+void FilterView::paint(juce::Graphics& g) {
+    const auto& p = palette();
+    auto& fb = proc_.feedbackSuppressor();
+    drawTile(g, getLocalBounds().toFloat(), 20.0f, p.tile);
+    auto r = getLocalBounds().reduced(20, 0).withTrimmedTop(20).withTrimmedBottom(16);
+    auto head = r.removeFromTop(18);
+    drawCaption(g, S("Aktiva filter"), head, p.secondaryInk);
+    g.setColour(p.secondaryInk);
+    g.setFont(font(12.0f));
+    g.drawText(S("djup per filter"), head, juce::Justification::centredRight, false);
+    r.removeFromTop(16);
+
+    // Använda filter sorterade efter frekvens, sedan lediga platser upp till "Max filter".
+    std::vector<std::pair<float, float>> used;
+    for (int i = 0; i < gfx::FeedbackSuppressor::kMaxFilters; ++i)
+        if (fb.filterHz(i) > 0.0f) used.push_back({ fb.filterHz(i), fb.filterDepthDb(i) });
+    std::sort(used.begin(), used.end());
+    const int slots = juce::jlimit(1, gfx::FeedbackSuppressor::kMaxFilters,
+                                   juce::jmax(static_cast<int>(used.size()), juce::roundToInt(fb.maxFilters.get())));
+    const int gap = 10;
+    const int cw = (r.getWidth() - gap * (slots - 1)) / slots;
+    for (int i = 0; i < slots; ++i) {
+        auto col = juce::Rectangle<int>(r.getX() + i * (cw + gap), r.getY(), cw, r.getHeight());
+        auto labels = col.removeFromBottom(34);
+        col.removeFromBottom(10);
+        g.setColour(p.tileStrong);
+        g.fillRoundedRectangle(col.toFloat(), 10.0f);
+        juce::String hz = S("–"), db = S("ledig");
+        if (i < static_cast<int>(used.size())) {
+            const auto [f, d] = used[size_t(i)];
+            const float depth = juce::jlimit(0.0f, 1.0f, -d / 30.0f);
+            g.setColour(p.ink);
+            g.fillRoundedRectangle(col.toFloat().withHeight(juce::jmax(20.0f, static_cast<float>(col.getHeight()) * depth)), 10.0f);
+            hz = (f >= 1000.0f ? juce::String(f / 1000.0f, 2).replaceCharacter('.', ',') + " kHz" : juce::String(juce::roundToInt(f)) + " Hz");
+            db = minusSign(juce::String(juce::roundToInt(d))) + " dB";
+        }
+        g.setColour(p.ink);
+        g.setFont(font(12.5f, Weight::SemiBold));
+        g.drawFittedText(hz, labels.removeFromTop(17), juce::Justification::centred, 1, 0.75f);
+        g.setColour(p.secondaryInk);
+        g.setFont(font(11.5f));
+        g.drawText(db, labels, juce::Justification::centredTop, false);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -691,6 +812,11 @@ void InputMeter::update() {
     repaint();
 }
 
+int InputMeter::pillWidth() const {
+    const int n = proc_.engine().input().mode.load() == 2 ? 2 : 1;
+    return 18 * 2 + n * (30 + 10 + (n > 1 ? 110 : 140)) + (n - 1) * 22;
+}
+
 void InputMeter::paint(juce::Graphics& g) {
     const auto& p = palette();
     const int mode = proc_.engine().input().mode.load();
@@ -699,7 +825,7 @@ void InputMeter::paint(juce::Graphics& g) {
     if (mode == 1 || mode == 2) chans.push_back(1);
     const int n = static_cast<int>(chans.size());
     const int labelW = 30, barW = n > 1 ? 110 : 140, segGap = 22, pad = 18;
-    const int w = pad * 2 + n * (labelW + 10 + barW) + (n - 1) * segGap;
+    const int w = pillWidth();
     auto pill = getLocalBounds().removeFromRight(w).withSizeKeepingCentre(w, size::button);
     drawTile(g, pill.toFloat(), pill.getHeight() * 0.5f, p.tile);
     auto r = pill.reduced(pad, 0);
@@ -1281,6 +1407,11 @@ void AnalysisView::resized() {
 // ---------------------------------------------------------------------------
 HeaderBar::HeaderBar() {
     addAndMakeVisible(more);
+    boost.symbol = icons::Symbol::ArrowUp;
+    boost.showSymbol = true;
+    boost.setClickingTogglesState(false);
+    boost.setTooltip(S("Solo-boost på/av (B / fotswitch CC 106). Mängden ställs in i Volym."));
+    addAndMakeVisible(boost);
 }
 
 void HeaderBar::paint(juce::Graphics& g) {

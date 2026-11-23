@@ -42,6 +42,11 @@ public:
     explicit Pill(const juce::String& label, bool toggle = true);
     void paintButton(juce::Graphics&, bool over, bool down) override;
     juce::String prefix;            // liten text före (t.ex. presetnummer)
+    juce::String suffix;            // grå text efter (t.ex. "+4 dB", "96 BPM")
+    float symbolAlpha = 1.0f;       // t.ex. blinkande takt-prick
+    float fontScale = 1.0f;         // < 1 i smala rutor (sätts av KnobTile för alla val samtidigt)
+    // Textbredd vid fontScale 1 (för att räkna ut en gemensam skala).
+    float naturalTextWidth() const;
     // Valfria färger (används t.ex. i stämfältet, som har egen bakgrund). Genomskinlig = standard.
     juce::Colour offFill, onFill, offText, onText;
     icons::Symbol symbol = icons::Symbol::More;
@@ -98,7 +103,17 @@ private:
     static constexpr int kTileH = 84;
 };
 
-// Vald effekt: rubrik, status, "I preset", på/av och rattar.
+// Rundgångsskyddets aktiva filter: en stapel per plats (djup) med frekvens under.
+class FilterView final : public juce::Component {
+public:
+    explicit FilterView(GuitarFXProcessor& proc) : proc_(proc) {}
+    void paint(juce::Graphics&) override;
+private:
+    GuitarFXProcessor& proc_;
+};
+
+// Vald effekt: rubrik, status, "I presetet", på/av och reglage.
+// Delay: Tap-knapp med tempo (pricken blinkar i takt). Rundgångsskydd: Nollställ + filtervy.
 class EffectPanel final : public juce::Component {
 public:
     explicit EffectPanel(GuitarFXProcessor& proc);
@@ -112,6 +127,9 @@ private:
     Switch switch_;
     Pill presetPill_ { "I presetet" };
     std::unique_ptr<Pill> loadIr_, builtInIr_;
+    Pill tap_ { "Tap", false };
+    Pill resetFilters_ { juce::String::fromUTF8("Nollställ"), false };
+    FilterView filters_;
     std::unique_ptr<juce::FileChooser> chooser_;
     juce::String irStatus_;
     std::vector<std::unique_ptr<KnobTile>> tiles_;
@@ -165,6 +183,7 @@ public:
     explicit InputMeter(GuitarFXProcessor& proc) : proc_(proc) { setInterceptsMouseClicks(false, false); }
     void update();
     void paint(juce::Graphics&) override;
+    int pillWidth() const;      // bredden på den rundade rutan (beror på ingångsläget)
 private:
     GuitarFXProcessor& proc_;
     float level_[2] {}, hold_[2] {};
@@ -260,6 +279,7 @@ public:
     void paint(juce::Graphics&) override;
     void resized() override;
     IconButton more { icons::Symbol::More, juce::String::fromUTF8("Inställningar") };
+    Pill boost { "Boost" };
 };
 
 } // namespace ui

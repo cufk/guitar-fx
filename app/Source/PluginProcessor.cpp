@@ -13,17 +13,26 @@ GuitarFXProcessor::GuitarFXProcessor()
           .withInput ("Input",  juce::AudioChannelSet::stereo(), true)   // Scarlett in 1 + 2
           .withOutput("Output", juce::AudioChannelSet::stereo(), true)) {
     // Kedjan byggs en gång vid start (EffectChain::add är inte realtidssäker).
-    // Ordning: EQ -> sustain -> distortion -> kabinett -> chorus -> flanger -> widener -> reverb.
+    // Ordning: EQ -> kropp -> sustain -> distortion -> kabinett -> rundgångsskydd -> dubblare ->
+    // chorus -> flanger -> tremolo -> widener -> delay -> reverb -> volym.
+    // Rundgångsskyddet sitter efter alla steg som höjer nivån och före modulationen
+    // (som annars smetar ut topparna det letar efter).
     auto& chain = engine_.chain();
     auto add = [&chain](auto effect, auto*& ptr) { ptr = effect.get(); return chain.add(std::move(effect), false); };
     const int eqSlot   = add(std::make_unique<gfx::Eq>(),         eq_);
+    const int bodySlot = add(std::make_unique<gfx::Body>(),       body_);
     const int susSlot  = add(std::make_unique<gfx::Sustain>(),    sustain_);
     const int distSlot = add(std::make_unique<gfx::Distortion>(), distortion_);
     const int cabSlot  = add(std::make_unique<gfx::Cabinet>(),    cabinet_);
+    const int fbSlot   = add(std::make_unique<gfx::FeedbackSuppressor>(), feedback_);
+    const int dblSlot  = add(std::make_unique<gfx::Doubler>(),    doubler_);
     const int chSlot   = add(std::make_unique<gfx::Chorus>(),     chorus_);
     const int flSlot   = add(std::make_unique<gfx::Flanger>(),    flanger_);
+    const int trSlot   = add(std::make_unique<gfx::Tremolo>(),    tremolo_);
     const int widSlot  = add(std::make_unique<gfx::Widener>(),    widener_);
+    const int dlSlot   = add(std::make_unique<gfx::Delay>(),      delay_);
     const int rvSlot   = add(std::make_unique<gfx::Reverb>(),     reverb_);
+    const int volSlot  = add(std::make_unique<gfx::Volume>(),     volume_);
 
     // Färger i samma anda som StemSplitters spårfärger.
     rig_.addEffect({ "eq", "EQ", 0xff29ad9e, eqSlot, {
@@ -33,42 +42,70 @@ GuitarFXProcessor::GuitarFXProcessor()
         P("mid",    "Mitt",        "dB", eq_->midGainDb, 0.1f, 1),
         P("high",   "Diskant",     "dB", eq_->highGainDb, 0.1f, 1),
         P("notchHz","Notch frekv.","Hz", eq_->notchHz, 1, 0, true),
-        P("notch",  "Notch djup",  "dB", eq_->notchDepthDb, 0.5f, 1) }, {} });
+        P("notch",  "Notch djup",  "dB", eq_->notchDepthDb, 0.5f, 1) }, {}, {} });
     rig_.addEffect({ "sustain", "Sustain", 0xffe0773a, susSlot, {
         P("amount",  "Sustain", "",   sustain_->amount, 0.01f, 2),
         P("attack",  "Anslag",  "ms", sustain_->attackMs, 0.1f, 0, true),
         P("release", "Släpp",   "ms", sustain_->releaseMs, 1, 0, true),
         P("level",   "Nivå",    "dB", sustain_->levelDb, 0.1f, 1),
         P("mix",     "Mix",     "",   sustain_->mix, 0.01f, 2) },
-        [this] { return sustain_->gainReductionDb(); } });
+        [this] { return sustain_->gainReductionDb(); }, {} });
     rig_.addEffect({ "chorus", "Chorus", 0xff8c6bf2, chSlot, {
         P("rate",  "Hastighet", "Hz", chorus_->rateHz, 0.01f, 2, true),
         P("depth", "Djup",      "",   chorus_->depth, 0.01f, 2),
-        P("mix",   "Mix",       "",   chorus_->mix, 0.01f, 2) }, {} });
+        P("mix",   "Mix",       "",   chorus_->mix, 0.01f, 2) }, {}, {} });
     rig_.addEffect({ "flanger", "Flanger", 0xfff5a623, flSlot, {
         P("rate",     "Hastighet",    "Hz", flanger_->rateHz, 0.01f, 2, true),
         P("depth",    "Djup",         "",   flanger_->depth, 0.01f, 2),
         P("feedback", "Återkoppling", "",   flanger_->feedback, 0.01f, 2),
-        P("mix",      "Mix",          "",   flanger_->mix, 0.01f, 2) }, {} });
+        P("mix",      "Mix",          "",   flanger_->mix, 0.01f, 2) }, {}, {} });
     rig_.addEffect({ "widener", "Widener", 0xff2bb3d9, widSlot, {
         P("width",  "Bredd",       "",   widener_->width, 0.01f, 2),
         P("time",   "Tid",         "ms", widener_->timeMs, 0.1f, 1),
-        P("lowCut", "Bas i mitten","Hz", widener_->lowCutHz, 1, 0, true) }, {} });
+        P("lowCut", "Bas i mitten","Hz", widener_->lowCutHz, 1, 0, true) }, {}, {} });
     rig_.addEffect({ "reverb", "Reverb", 0xff3d8ff0, rvSlot, {
         P("decay",    "Efterklang",  "s",  reverb_->decaySec, 0.01f, 2, true),
         P("size",     "Storlek",     "",   reverb_->size, 0.01f, 2),
         P("predelay", "Predelay",    "ms", reverb_->predelayMs, 0.1f, 0),
         P("damp",     "Dämpning",    "Hz", reverb_->dampHz, 1, 0, true),
         P("lowCut",   "Lågskärning", "Hz", reverb_->lowCutHz, 1, 0, true),
-        P("mix",      "Mix",         "",   reverb_->mix, 0.01f, 2) }, {} });
+        P("mix",      "Mix",         "",   reverb_->mix, 0.01f, 2) }, {}, {} });
     rig_.addEffect({ "distortion", "Distortion", 0xffd9467a, distSlot, {
         P("mode",  "Typ",   "",   distortion_->mode, 1, 0, false, { "Overdrive", "Distortion", "Fuzz" }),
         P("drive", "Drive", "dB", distortion_->driveDb, 0.1f, 1),
         P("tight", "Tight", "Hz", distortion_->tightHz, 1, 0, true),
         P("tone",  "Ton",   "",   distortion_->tone, 0.01f, 2),
-        P("level", "Nivå",  "dB", distortion_->levelDb, 0.1f, 1) }, {} });
+        P("level", "Nivå",  "dB", distortion_->levelDb, 0.1f, 1) }, {}, {} });
     rig_.addEffect({ "cabinet", "Kabinett", 0xff9a7b5f, cabSlot, {
-        P("level", "Nivå", "dB", cabinet_->levelDb, 0.1f, 1) }, {} });
+        P("level", "Nivå", "dB", cabinet_->levelDb, 0.1f, 1) }, {}, {} });
+    rig_.addEffect({ "body", "Kropp", 0xffb08a5a, bodySlot, {
+        P("type",   "Typ",   "",   body_->type, 1, 0, false, { "Dreadnought", "Jumbo", "Auditorium", "Parlor" }),
+        P("amount", "Mängd", "",   body_->amount, 0.01f, 2),
+        P("air",    "Luft",  "dB", body_->airDb, 0.1f, 1) }, {}, "Kroppsklang" });
+    rig_.addEffect({ "feedback", "Rundgång", 0xffd84a3c, fbSlot, {
+        P("sensitivity", "Känslighet", "",   feedback_->sensitivity, 0.01f, 2),
+        P("maxFilters",  "Max filter", "",   feedback_->maxFilters, 1, 0),
+        P("maxDepth",    "Max djup",   "dB", feedback_->maxDepthDb, 0.5f, 1) },
+        [this] { return static_cast<float>(feedback_->activeFilters()); }, "Rundgångsskydd" });
+    rig_.addEffect({ "doubler", "Dubblare", 0xff6c8cf2, dblSlot, {
+        P("doubling", "Dubbling", "",   doubler_->doubling, 0.01f, 2),
+        P("octave",   "Oktav",    "",   doubler_->octave, 0.01f, 2),
+        P("time",     "Tid",      "ms", doubler_->timeMs, 0.1f, 1),
+        P("width",    "Bredd",    "",   doubler_->width, 0.01f, 2) }, {}, "Dubblare och oktav" });
+    rig_.addEffect({ "tremolo", "Tremolo", 0xffc45ab3, trSlot, {
+        P("rate",   "Hastighet", "Hz", tremolo_->rateHz, 0.01f, 2, true),
+        P("depth",  "Djup",      "",   tremolo_->depth, 0.01f, 2),
+        P("shape",  "Form",      "",   tremolo_->shape, 0.01f, 2),
+        P("stereo", "Stereo",    "",   tremolo_->stereo, 0.01f, 2) }, {}, {} });
+    rig_.addEffect({ "delay", "Delay", 0xff3fb37f, dlSlot, {
+        P("tempo",    "Tempo",        "BPM", delay_->tempoBpm, 1, 0),
+        P("division", "Indelning",    "",    delay_->division, 1, 0, false, { "1/4", "1/8 punkt.", "1/8", "1/16" }),
+        P("feedback", "Återkoppling", "",    delay_->feedback, 0.01f, 2),
+        P("damp",     "Dämpning",     "Hz",  delay_->dampHz, 1, 0, true),
+        P("mix",      "Mix",          "",    delay_->mix, 0.01f, 2) }, {}, {} });
+    rig_.addEffect({ "volume", "Volym", 0xff8a8a8a, volSlot, {
+        P("level", "Nivå",  "dB", volume_->levelDb, 0.1f, 1),
+        P("boost", "Boost", "dB", volume_->boostDb, 0.5f, 1) }, {}, {} });
 
     createFactoryPresets();
     startTimerHz(50);
@@ -83,6 +120,10 @@ void GuitarFXProcessor::createFactoryPresets() {
     reverb_->mix.set(0.15f);
     engine_.chain().setEnabled(rig_.findEffect("eq")->slot, true);
     engine_.chain().setEnabled(rig_.findEffect("reverb")->slot, true);
+    // Säkerhet och nivå ligger alltid på i grundljudet. Kroppsklang är för den inbyggda
+    // pickupen och slås på av den som behöver den.
+    engine_.chain().setEnabled(rig_.findEffect("feedback")->slot, true);
+    engine_.chain().setEnabled(rig_.findEffect("volume")->slot, true);
     rig_.initBaseFromLive();
 
     // Exempel att utgå från – byt namn, ändra eller ta bort.
@@ -129,7 +170,8 @@ void GuitarFXProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
     juce::AudioProcessLoadMeasurer::ScopedTimer timer(loadMeasurer_, buffer.getNumSamples());
 
     // Fotswitch/Bluetooth-MIDI: Program Change 0 = preset 1, 1 = preset 2 osv. (samma igen
-    // eller nummer utan preset = grundljud). CC 102/103 = föregående/nästa, CC 104 = grundljud, CC 105 = tysta ut (stämning) på/av.
+    // eller nummer utan preset = grundljud). CC 102/103 = föregående/nästa, CC 104 = grundljud,
+    // CC 105 = tysta ut (stämning) på/av, CC 106 = boost på/av, CC 107 = tap tempo.
     for (const auto meta : midi) {
         const auto m = meta.getMessage();
         if (m.isProgramChange()) {
@@ -141,6 +183,11 @@ void GuitarFXProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
             if (cc == 103) pendingCommand_.store(kCmdNext, std::memory_order_release);
             if (cc == 104) pendingCommand_.store(kCmdBase, std::memory_order_release);
             if (cc == 105) engine_.tuner().muteOutput.store(!engine_.tuner().muteOutput.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            if (cc == 106) volume_->setBoost(!volume_->boostOn());
+            if (cc == 107) {   // tidpunkten tas här, så att timerns ryck inte påverkar tempot
+                midiTapMs_.store(juce::Time::getMillisecondCounterHiRes(), std::memory_order_relaxed);
+                midiTaps_.fetch_add(1, std::memory_order_release);
+            }
             lastMidi_.store((2 << 16) | (cc << 8) | m.getControllerValue(), std::memory_order_relaxed);
         }
     }
@@ -158,6 +205,13 @@ void GuitarFXProcessor::timerCallback() {
     else if (cmd == kCmdPrev) rig_.selectPrevious();
     else if (cmd == kCmdBase) rig_.activate(-1);
     else if (cmd >= 0) rig_.select(cmd < static_cast<int>(rig_.presets().size()) ? cmd : -1);
+
+    if (const int taps = midiTaps_.load(std::memory_order_acquire); taps != handledMidiTaps_) {
+        handledMidiTaps_ = taps;
+        const double ms = midiTapMs_.load(std::memory_order_relaxed);
+        lastTapMs_.store(ms, std::memory_order_relaxed);
+        if (const float bpm = tap_.tap(ms); bpm > 0.0f) delay_->tempoBpm.set(std::round(bpm));
+    }
 
     // Ändringar från GUI:t (rattar, på/av) skrivs till grundljud eller aktivt preset.
     rig_.syncFromLive();
@@ -194,8 +248,20 @@ int GuitarFXProcessor::createPresetFromAnalysis(const gfx::SongAnalysis& a, cons
         sustain_->amount.set(juce::jlimit(0.2f, 0.9f, 0.2f + 0.7f * a.compression));
         sustain_->mix.set(0.6f);
     }
+    // Tempo: delayn får låtens tempo (avstängd – slå på den om låten har eko).
+    if (a.bpm > 0.0f) {
+        rig_.setIncludedInActive("delay", true);
+        delay_->tempoBpm.set(std::round(juce::jlimit(40.0f, 240.0f, a.bpm)));
+        engine_.chain().setEnabled(rig_.findEffect("delay")->slot, false);
+    }
     rig_.syncFromLive();
     return i;
+}
+
+void GuitarFXProcessor::tapTempo() {
+    const double ms = juce::Time::getMillisecondCounterHiRes();
+    lastTapMs_.store(ms, std::memory_order_relaxed);
+    if (const float bpm = tap_.tap(ms); bpm > 0.0f) delay_->tempoBpm.set(std::round(bpm));
 }
 
 juce::String GuitarFXProcessor::lastMidiDescription() const {

@@ -16,6 +16,13 @@
 #include "dsp/effects/Reverb.h"
 #include "dsp/effects/Sustain.h"
 #include "dsp/effects/Widener.h"
+#include "dsp/effects/Body.h"
+#include "dsp/effects/Delay.h"
+#include "dsp/effects/Doubler.h"
+#include "dsp/effects/FeedbackSuppressor.h"
+#include "dsp/effects/Tremolo.h"
+#include "dsp/effects/Volume.h"
+#include "engine/TapTempo.h"
 
 class GuitarFXProcessor final : public juce::AudioProcessor, private juce::Timer {
 public:
@@ -49,6 +56,16 @@ public:
     gfx::Rig& rig() { return rig_; }
     double cpuLoad() const { return loadMeasurer_.getLoadAsProportion(); }
     gfx::Cabinet& cabinet() { return *cabinet_; }
+    gfx::FeedbackSuppressor& feedbackSuppressor() { return *feedback_; }
+    gfx::Delay& delay() { return *delay_; }
+    gfx::Volume& volume() { return *volume_; }
+
+    // Tap tempo (meddelandetråden): sätter delayns tempo. Även MIDI CC 107 och mellanslag.
+    void tapTempo();
+    // Tidpunkt (ms, Time::getMillisecondCounterHiRes) för senaste tryck – för att blinka i takt.
+    double lastTapMs() const { return lastTapMs_.load(std::memory_order_relaxed); }
+    // Solo-boost (global, följer inte presets). Även MIDI CC 106 och tangenten B.
+    void toggleBoost() { volume_->setBoost(!volume_->boostOn()); }
 
     // Läs in en IR-fil (WAV/AIFF) till kabinettet. Meddelandetråden.
     // Returnerar ett felmeddelande, eller tom sträng vid lyckad laddning.
@@ -86,6 +103,17 @@ private:
     gfx::Reverb* reverb_ = nullptr;
     gfx::Sustain* sustain_ = nullptr;
     gfx::Widener* widener_ = nullptr;
+    gfx::Body* body_ = nullptr;
+    gfx::FeedbackSuppressor* feedback_ = nullptr;
+    gfx::Doubler* doubler_ = nullptr;
+    gfx::Tremolo* tremolo_ = nullptr;
+    gfx::Delay* delay_ = nullptr;
+    gfx::Volume* volume_ = nullptr;
+    gfx::TapTempo tap_;
+    std::atomic<double> lastTapMs_ { 0.0 };
+    std::atomic<int> midiTaps_ { 0 };        // tap från MIDI (ljudtråden räknar upp)
+    std::atomic<double> midiTapMs_ { 0.0 };
+    int handledMidiTaps_ = 0;
     juce::File irFile_;
     juce::AudioProcessLoadMeasurer loadMeasurer_;
 

@@ -43,6 +43,7 @@ struct EffectSpec {
     int slot = -1;                     // plats i EffectChain
     std::vector<ParamSpec> params;
     std::function<float()> activity;   // valfri: t.ex. kompressorns nedreglering i dB (för GUI)
+    std::string title;                 // valfritt längre namn i panelen (t.ex. "Rundgångsskydd")
 };
 
 struct EffectState {

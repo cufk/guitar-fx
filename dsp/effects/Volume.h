@@ -32,7 +32,7 @@ public:
 
     void process(AudioBufferView buf) override {
         gain_.setTarget(targetGain());
-        if (!gain_.isSmoothing() && gain_.target() == 1.0f) return;   // exakt genomgång vid 0 dB
+        if (!gain_.isSmoothing() && sameValue(gain_.target(), 1.0f)) return;   // exakt genomgång vid 0 dB
         for (int i = 0; i < buf.numSamples; ++i) {
             const float g = gain_.next();
             for (int ch = 0; ch < buf.numChannels; ++ch) buf.channels[ch][i] *= g;

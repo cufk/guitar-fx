@@ -11,6 +11,7 @@
 
 #include "../Effect.h"
 #include "../core/Biquad.h"
+#include "../core/DspUtils.h"
 #include "../core/Parameter.h"
 #include <algorithm>
 #include <array>
@@ -80,7 +81,7 @@ private:
     void update(bool force) {
         const int t = std::clamp(static_cast<int>(std::lround(type.get())), 0, kTypes - 1);
         const float a = amount_.current(), air = air_.current();
-        if (!force && t == appliedType_ && a == appliedAmount_ && air == appliedAir_) return;
+        if (!force && t == appliedType_ && sameValue(a, appliedAmount_) && sameValue(air, appliedAir_)) return;
         appliedType_ = t; appliedAmount_ = a; appliedAir_ = air;
         bypass_ = a <= 1.0e-4f && air <= 1.0e-3f;
         for (int k = 0; k < kBands; ++k) {

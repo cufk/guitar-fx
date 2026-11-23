@@ -14,6 +14,7 @@
 
 #include "../Effect.h"
 #include "../core/Biquad.h"
+#include "../core/DspUtils.h"
 #include "../core/FFT.h"
 #include "../core/Parameter.h"
 #include <algorithm>
@@ -116,7 +117,7 @@ private:
             // Glid mot måldjupet (1 dB per block) så att filtret inte klickar in.
             if (s.depthDb > s.targetDb) s.depthDb = std::max(s.targetDb, s.depthDb - 1.0f);
             else if (s.depthDb < s.targetDb) s.depthDb = std::min(s.targetDb, s.depthDb + 1.0f);
-            if (s.depthDb != s.appliedDb) {
+            if (!sameValue(s.depthDb, s.appliedDb)) {
                 s.bq.setCoeffs(BiquadCoeffs::peak(sr_, s.hz, kQ, s.depthDb));
                 s.appliedDb = s.depthDb;
                 changed = true;
