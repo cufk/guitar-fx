@@ -257,8 +257,9 @@ private:
     juce::Rectangle<int> noteArea_, scaleArea_, infoArea_, stringsArea_;
 };
 
-// Låtanalys (täcker huvudytan): välj en ljudfil, analysen körs i en egen tråd, och
-// resultatet kan bli ett nytt preset. Ren signalanalys (engine/SongAnalyzer).
+// Låtanalys (täcker huvudytan): välj en inspelning av låten, analysen körs i en egen tråd och
+// GuitarFit räknar ut var gitarren får plats i bandet – resultatet kan bli ett nytt preset.
+// Ren signalanalys (engine/SongAnalyzer + engine/GuitarFit).
 class AnalysisView final : public juce::Component, private juce::Timer {
 public:
     explicit AnalysisView(GuitarFXProcessor& proc);
@@ -283,6 +284,7 @@ private:
     std::atomic<bool> cancel_ { false }, finished_ { false };
     std::atomic<float> progress_ { 0.0f };
     gfx::SongAnalysis result_;      // skrivs av tråden innan finished_ sätts
+    gfx::GuitarFit fit_;            // gitarrens plats i bandet (räknas när analysen är klar)
     juce::String error_;
     State state_ = State::Idle;
     bool open_ = false;
@@ -298,6 +300,7 @@ public:
     void resized() override;
     IconButton more { icons::Symbol::More, juce::String::fromUTF8("Inställningar") };
     Pill boost { "Boost" };
+    Pill screensaver { "Av", false };   // rullgardin: skärmsläckare (Ingen / Strömmar / Klot / Terräng / Form)
 private:
     std::unique_ptr<juce::Drawable> logo_;
     bool logoDark_ = false;
