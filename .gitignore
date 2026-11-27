@@ -7,3 +7,6 @@ xcuserdata/
 *.wav
 !tests/data/*.wav
 dist/
+build-ios/
+build-ios-sim/
+screenshots/

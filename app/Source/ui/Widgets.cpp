@@ -25,6 +25,30 @@ float levelNorm(float lvl) {
 juce::String minusSign(juce::String s) { return s.replaceCharacter('-', static_cast<juce::juce_wchar>(0x2212)); }
 } // namespace
 
+juce::File appDataDirectory() {
+    return juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory).getChildFile("Stagebox");
+}
+
+juce::File localCopyOf(const juce::FileChooser& fc, const juce::File& destDir) {
+    const auto url = fc.getURLResult();
+    if (url.isEmpty()) return {};
+   #if ! JUCE_IOS
+    if (url.isLocalFile()) return url.getLocalFile();
+   #endif
+    auto in = url.createInputStream(juce::URL::InputStreamOptions(juce::URL::ParameterHandling::inAddress));
+    if (in == nullptr) return {};
+    destDir.createDirectory();
+    auto name = juce::URL::removeEscapeChars(url.getFileName());
+    if (name.isEmpty()) name = "fil";
+    const auto dest = destDir.getChildFile(juce::File::createLegalFileName(name));
+    dest.deleteFile();
+    juce::FileOutputStream out(dest);
+    if (!out.openedOk()) return {};
+    out.writeFromInputStream(*in, -1);
+    out.flush();
+    return out.getStatus().wasOk() ? dest : juce::File();
+}
+
 void drawSectionHeading(juce::Graphics& g, juce::Rectangle<int> r, const juce::String& title, const juce::String& detail) {
     const auto& p = palette();
     const auto tf = font(22.0f, Weight::SemiBold);
@@ -407,7 +431,8 @@ EffectPanel::EffectPanel(GuitarFXProcessor& proc) : proc_(proc), filters_(proc) 
         chooser_ = std::make_unique<juce::FileChooser>(S("Välj kabinett-IR"), proc_.impulseResponseFile(), "*.wav;*.aif;*.aiff");
         chooser_->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
                               [this](const juce::FileChooser& fc) {
-                                  if (fc.getResult() != juce::File()) irStatus_ = proc_.loadImpulseResponse(fc.getResult());
+                                  const auto f = localCopyOf(fc, appDataDirectory().getChildFile("IR"));
+                                  if (f != juce::File()) irStatus_ = proc_.loadImpulseResponse(f);
                               });
     };
     builtInIr_->onClick = [this] { proc_.useBuiltInImpulseResponse(); irStatus_.clear(); };
@@ -702,7 +727,7 @@ void SetlistPanel::paint(juce::Graphics& g) {
         if (row > 0) {
             auto h = inner.removeFromRight(22).toFloat().withSizeKeepingCentre(16.0f, 12.0f);
             g.setColour(sub.withAlpha(hover_ == presetIndex || floating ? 1.0f : 0.45f));
-            for (int k = 0; k < 3; ++k) g.fillRoundedRectangle(h.getX(), h.getY() + k * 5.0f, h.getWidth(), 2.0f, 1.0f);
+            for (int k = 0; k < 3; ++k) g.fillRoundedRectangle(h.getX(), h.getY() + static_cast<float>(k) * 5.0f, h.getWidth(), 2.0f, 1.0f);
         }
         juce::String name, names;
         if (row == 0) {
@@ -896,7 +921,7 @@ void InputMeter::paint(juce::Graphics& g) {
     const int labelW = 30, barW = n > 1 ? 110 : 140, segGap = 22, pad = 18;
     const int w = pillWidth();
     auto pill = getLocalBounds().removeFromRight(w).withSizeKeepingCentre(w, size::button);
-    drawTile(g, pill.toFloat(), pill.getHeight() * 0.5f, p.tile);
+    drawTile(g, pill.toFloat(), static_cast<float>(pill.getHeight()) * 0.5f, p.tile);
     auto r = pill.reduced(pad, 0);
     for (int ch : chans) {
         auto seg = r.removeFromLeft(labelW + 10 + barW);
@@ -1249,7 +1274,7 @@ void TunerStrip::paint(juce::Graphics& g) {
     const float cw = ns > 0 ? st.getWidth() / static_cast<float>(ns) : 0.0f;
     for (int i = 0; i < ns; ++i) {
         const auto name = juce::String(gfx::noteFromHz(gfx::hzFromMidi(tuning.strings[size_t(i)])).name);
-        auto c = juce::Rectangle<float>(st.getX() + cw * i, st.getY(), cw, st.getHeight())
+        auto c = juce::Rectangle<float>(st.getX() + cw * static_cast<float>(i), st.getY(), cw, st.getHeight())
                      .withSizeKeepingCentre(name.length() > 1 ? 32.0f : 26.0f, 26.0f);
         const bool sel = i == nearest_;
         if (sel) { g.setColour(ink); g.fillRoundedRectangle(c, 13.0f); }
@@ -1286,7 +1311,7 @@ AnalysisView::AnalysisView(GuitarFXProcessor& proc) : proc_(proc) {
     create_.setToggleState(true, juce::dontSendNotification);   // primär knapp (svart)
     create_.onClick = [this] {
         if (state_ != State::Done) return;
-        proc_.createPresetFromAnalysis(result_, title_);
+        proc_.createPresetFromAnalysis(fit_, title_);
         if (onClose) onClose();
     };
     close_.onClick = [this] { if (onClose) onClose(); };
@@ -1315,7 +1340,9 @@ void AnalysisView::chooseFile() {
     juce::Component::SafePointer<AnalysisView> safe(this);
     chooser_->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
                           [safe](const juce::FileChooser& fc) {
-                              if (safe && fc.getResult() != juce::File()) safe->start(fc.getResult());
+                              if (!safe) return;
+                              const auto f = localCopyOf(fc, juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("Stagebox-analys"));
+                              if (f != juce::File()) safe->start(f);
                           });
 }
 
@@ -1355,6 +1382,7 @@ void AnalysisView::timerCallback() {
     if (state_ == State::Working && finished_.load()) {
         if (worker_.joinable()) worker_.join();
         state_ = result_.valid ? State::Done : State::Failed;
+        fit_ = gfx::fitGuitarToSong(result_);
         create_.setVisible(state_ == State::Done);
         choose_.setButtonText(state_ == State::Done ? S("Välj annan låt") : S("Välj låt…"));
         stopTimer();
@@ -1376,12 +1404,12 @@ void AnalysisView::paint(juce::Graphics& g) {
         auto box = body.withSizeKeepingCentre(juce::jmin(body.getWidth(), 640), 220);
         g.setColour(p.ink);
         g.setFont(font(26.0f, Weight::SemiBold));
-        g.drawText(S("Låt gitarren låta som i en låt"), box.removeFromTop(40), juce::Justification::centred, false);
+        g.drawText(S("Hitta gitarrens plats i en låt"), box.removeFromTop(40), juce::Justification::centred, false);
         g.setColour(state_ == State::Failed ? p.danger : p.secondaryInk);
         g.setFont(font(16.0f));
         const auto text = state_ == State::Failed ? error_
-            : S("Välj en ljudfil från datorn. Appen lyssnar på klang, rum, bredd, dynamik och tempo "
-                "och föreslår ett preset som du sedan kan justera. Allt sker lokalt.");
+            : S("Välj en inspelning av låten. Appen lyssnar på var bas, kick, sång och rum tar plats och "
+                "föreslår ett preset där gitarren passar in i bandet – den härmar inte hela låten. Allt sker lokalt.");
         g.drawFittedText(text, box.removeFromTop(90).reduced(20, 0), juce::Justification::centred, 3);
         return;
     }
@@ -1419,18 +1447,19 @@ void AnalysisView::paint(juce::Graphics& g) {
     g.setColour(p.secondaryInk);
     g.setFont(font(16.0f));
     g.drawText((a.bpm > 0 ? juce::String(juce::roundToInt(a.bpm)) + S(" BPM  ·  ") : juce::String())
-               + juce::String(juce::roundToInt(a.seconds / 60.0f)) + S(" min  ·  Förslag på preset – justera med öronen"),
+               + juce::String(juce::roundToInt(a.seconds / 60.0f)) + S(" min  ·  Gitarrens plats i bandet – justera med öronen"),
                top, juce::Justification::topLeft, true);
 
     const int gap = kGridGap;
     const int w = (body.getWidth() - gap * (kGridColumns - 1)) / kGridColumns;
     const int h = juce::jmin(body.getHeight() - 70, 300);
     struct Tile { const char* caption; juce::String value; juce::String unit; std::string text; };
+    const auto& f = fit_;
     const Tile tiles[4] = {
-        { "Klang", minusSign((a.lowGainDb >= 0 ? "+" : "") + juce::String(a.lowGainDb, 1).replaceCharacter('.', ',')), S("dB bas"), a.toneText },
-        { "Rum", juce::String(a.reverbDecaySec, 1).replaceCharacter('.', ','), S("s efterklang"), a.roomText },
-        { "Bredd", juce::String(juce::roundToInt(a.width * 100.0f)), S("%"), a.widthText },
-        { "Dynamik", juce::String(juce::roundToInt(a.loudnessRangeDb)), S("dB spridning"), a.dynamicsText },
+        { "Plats i bandet", juce::String(juce::roundToInt(f.lowCutHz)), S("Hz lågskärning"), f.spaceText },
+        { "Rum", juce::String(f.reverbDecaySec, 1).replaceCharacter('.', ','), S("s efterklang"), f.roomText },
+        { "Tempo", f.delayBpm > 0 ? juce::String(juce::roundToInt(f.delayBpm)) : S("–"), S("BPM"), f.tempoText },
+        { "Dynamik", f.sustain ? juce::String(juce::roundToInt(f.sustainAmount * 100.0f)) : S("–"), S("% sustain"), f.dynamicsText },
     };
     for (int i = 0; i < 4; ++i) {
         auto r = juce::Rectangle<int>(body.getX() + i * (w + gap), body.getY(), w, h);
@@ -1483,6 +1512,11 @@ HeaderBar::HeaderBar() {
     boost.setClickingTogglesState(false);
     boost.setTooltip(S("Solo-boost på/av (B / fotswitch CC 106). Mängden ställs in i Volym."));
     addAndMakeVisible(boost);
+    screensaver.symbol = icons::Symbol::Particles;
+    screensaver.showSymbol = true;
+    screensaver.chevron = true;
+    screensaver.setTooltip(S("Skärmsläckare"));
+    addAndMakeVisible(screensaver);
 }
 
 void HeaderBar::paint(juce::Graphics& g) {

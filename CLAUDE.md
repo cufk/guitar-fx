@@ -35,6 +35,11 @@ Driftsäkerhet live är huvudkravet. Svara på svenska.
   latens, MIDI) ligger i ⋯-menyn. Ingen färg utom rött för varningar.
   Effektrutorna: 14 effekter i sju kolumner (`kControlColumns`, samma som reglagen) i
   signalordning (sorterade på kedjeplats); kort namn i rutan, `EffectSpec::title` i panelen.
+  Skärmsläckare (`ui/ScreenSaver`): rullgardin i sidhuvudet (Ingen/Strömmar/Klot/Terräng/Form,
+  Starta efter 1/5/15 min, Visa nu), sparas i processorns state. Punkter ackumuleras i en
+  intensitetsbuffert → bild (alltid mörk, ingen text), styrs av TunerTap-avtappningen.
+  Aktivitet = global muslyssnare (bara verkliga rörelser > 3 px – JUCE skickar konstgjorda),
+  tangent, MIDI; första klicket väcker bara. 600 ms startperiod efter start.
   Boost-knappen i sidhuvudet (global, `Volume::setBoost`), Tap i delayns panel,
   Nollställ + `FilterView` för rundgångsskyddet.
   Reglagen: en rad med sju lika breda platser (`kControlColumns`) som fyller höjden – samma
@@ -46,8 +51,12 @@ Driftsäkerhet live är huvudkravet. Svara på svenska.
 - Stämapparat: lågt fält längst ned (`TunerStrip`), stämningar i `ui::tunings()`, valet och
   A4 sparas i processorns state. `engine/TunerTap.h` (ljudtråden kopierar torr ingång till
   ringbuffert; "Mute" gäller bara medan GUI:t är öppet) + `dsp/core/PitchDetector.h` (YIN).
-- Låtanalys: `engine/SongAnalyzer` (ren signalanalys: klang, rum, bredd, dynamik, tempo) körs
-  i egen tråd från `AnalysisView`; `GuitarFXProcessor::createPresetFromAnalysis` gör preset.
+- Låtanalys: `engine/SongAnalyzer` (ren signalanalys av hela mixen: balans per område, rum,
+  bredd, dynamik, tempo) körs i egen tråd från `AnalysisView`. `engine/GuitarFit` översätter
+  till gitarrens plats i bandet – gitarren ska KOMPLETTERA mixen, inte härma den (användarens
+  krav): mycket bas → högre lågskärning och basavsänkning, full lågmitt → sänkning, ficka i
+  2–5 kHz → liten höjning, mörk mix → diskant, rum torrare än låten, ingen widener.
+  `GuitarFXProcessor::createPresetFromAnalysis(GuitarFit)` gör presetet.
   Rum: stereo via L/R-koherens, mono via sen avklingning (tvådelad anpassning), annars
   standardval. Mät aldrig rum som "median av avklingning" i tät musik – det ger alltid max.
   Kalibrerat mot CC-låtar från Internet Archive (testas lokalt, checkas inte in).
@@ -60,6 +69,11 @@ Driftsäkerhet live är huvudkravet. Svara på svenska.
   `Resources/logo/app/stagebox-logo-{light,dark}.svg` (märkets transform förberäknad – JUCE:s
   SVG-läsare klarar inte kedjade transformer) och placeras efter ritrutan 1200 × 314, inte
   efter `getDrawableBounds()` (som missar linjernas tjocklek).
+- iPad: samma kod (`#if JUCE_IOS` där det behövs). Helskärm liggande (CMake: TARGETED_DEVICE_FAMILY 2,
+  IPAD_SCREEN_ORIENTATIONS landskap, STATUS_BAR_HIDDEN), ingen fönstergräns (layouten ska klara
+  iPad mini 1133 × 744). Filval: använd alltid `ui::localCopyOf(fc, dir)` – på iPad ger Filer-appen
+  bara en tillfällig URL. Sparar i `suspended()`. CI-jobbet `ipad` bygger för riktig iPad och tar
+  skärmdumpar i simulatorn (`scripts/ipad-screenshots.sh`).
 - Fristående app: eget fönster i `app/Source/StandaloneApp.cpp`
   (JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP) – inbyggd titelrad, ljudinställningar via ⋯-menyn.
   Inställningar i `Stagebox.settings` (kopieras från `GuitarFX.settings` första gången).

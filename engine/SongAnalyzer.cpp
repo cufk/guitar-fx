@@ -118,6 +118,21 @@ SongAnalysis analyseSong(const float* left, const float* right, int numSamples, 
     }
     a.midGainDb = std::fabs(bestDev) > 3.0f ? std::clamp(0.4f * bestDev, -4.0f, 4.0f) : 0.0f;
     if (a.midGainDb == 0.0f) a.midHz = 800.0f;
+    // Balans per område (för GuitarFit: var mixen är full och var det finns plats).
+    a.subDb      = devRef(40.0, 70.0);
+    a.bassDb     = devRef(70.0, 160.0);
+    a.lowMidDb   = devRef(200.0, 400.0);
+    a.presenceDb = devRef(1600.0, 4000.0);
+    a.airDb      = devRef(5000.0, 11000.0);
+    {
+        // Fickan söks i 2–5 kHz: gitarrens närvaro, ovanför sångens kärna.
+        const float pres = devRef(2000.0, 5000.0);
+        a.pocketDb = 0.0f;
+        for (const auto& b : bands) if (b.hz >= 2000.0 && b.hz <= 5000.0) {
+            const float d = devAt(b) - pres;
+            if (d < a.pocketDb) { a.pocketDb = d; a.pocketHz = static_cast<float>(b.hz); }
+        }
+    }
     // Lågskärning: mycket subbas i låten -> låg, nästan ingen -> högre.
     const float subDev = devRef(45.0, 80.0) - devRef(100.0, 200.0);
     a.lowCutHz = subDev > -2.0f ? 60.0f : subDev > -10.0f ? 80.0f : 110.0f;
@@ -127,7 +142,7 @@ SongAnalysis analyseSong(const float* left, const float* right, int numSamples, 
     const int hop = std::max(1, static_cast<int>(sr * 0.01));
     const int nFrames = numSamples / hop;
     std::vector<float> envDb(static_cast<size_t>(nFrames));
-    double ms = 0.0, ss = 0.0, msSum = 0.0, lrSum = 0.0, llSum = 0.0, rrSum = 0.0;
+    double ms = 0.0, ss = 0.0, lrSum = 0.0, llSum = 0.0, rrSum = 0.0;
     for (int f = 0; f < nFrames; ++f) {
         double e = 0.0;
         for (int i = f * hop; i < (f + 1) * hop; ++i) {
@@ -137,7 +152,6 @@ SongAnalysis analyseSong(const float* left, const float* right, int numSamples, 
             ms += m * m; ss += s * s;
             lrSum += l * r; llSum += l * l; rrSum += r * r;
         }
-        msSum += e;
         envDb[size_t(f)] = static_cast<float>(10.0 * std::log10(e / hop + 1e-12));
     }
     if (!report(0.7f)) return {};

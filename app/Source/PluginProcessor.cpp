@@ -174,6 +174,7 @@ void GuitarFXProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
     // CC 105 = tysta ut (stämning) på/av, CC 106 = boost på/av, CC 107 = tap tempo.
     for (const auto meta : midi) {
         const auto m = meta.getMessage();
+        midiEvents_.fetch_add(1, std::memory_order_relaxed);
         if (m.isProgramChange()) {
             pendingCommand_.store(m.getProgramChangeNumber(), std::memory_order_release);
             lastMidi_.store((1 << 16) | (m.getProgramChangeNumber() << 8), std::memory_order_relaxed);
@@ -218,42 +219,40 @@ void GuitarFXProcessor::timerCallback() {
     cabinet_->collectGarbage();
 }
 
-int GuitarFXProcessor::createPresetFromAnalysis(const gfx::SongAnalysis& a, const juce::String& name) {
+int GuitarFXProcessor::createPresetFromAnalysis(const gfx::GuitarFit& f, const juce::String& name) {
     const int i = rig_.addPreset(name.toStdString());
     rig_.activate(i);
 
-    // Klang: EQ efter låtens frekvensbalans (notch lämnas orörd).
+    // Plats i bandet: lågskärning, bas, mittband (gröt-sänkning eller närvaro) och diskant.
+    // Notch lämnas orörd (den är till för rundgång).
     rig_.setIncludedInActive("eq", true);
-    eq_->lowCutHz.set(a.lowCutHz);
-    eq_->lowGainDb.set(a.lowGainDb);
-    eq_->midFreqHz.set(a.midHz);
-    eq_->midGainDb.set(a.midGainDb);
-    eq_->highGainDb.set(a.highGainDb);
+    eq_->lowCutHz.set(f.lowCutHz);
+    eq_->lowGainDb.set(f.lowShelfDb);
+    eq_->midFreqHz.set(f.midHz);
+    eq_->midGainDb.set(f.midDb);
+    eq_->highGainDb.set(f.highDb);
 
-    // Rum: reverb efter efterklang och mängd.
+    // Rum: lite torrare än låten, predelay efter tempot.
     rig_.setIncludedInActive("reverb", true);
-    reverb_->decaySec.set(a.reverbDecaySec);
-    reverb_->mix.set(a.reverbMix);
-    reverb_->predelayMs.set(a.reverbPredelayMs);
-    reverb_->size.set(juce::jlimit(0.3f, 1.0f, a.reverbDecaySec / 4.0f));
+    reverb_->decaySec.set(f.reverbDecaySec);
+    reverb_->mix.set(f.reverbMix);
+    reverb_->predelayMs.set(f.reverbPredelayMs);
+    reverb_->size.set(juce::jlimit(0.3f, 1.0f, f.reverbDecaySec / 3.0f));
 
-    // Bredd: widener bara om låten är tydligt stereo.
-    if (a.width > 0.25f) {
-        rig_.setIncludedInActive("widener", true);
-        widener_->width.set(juce::jlimit(0.2f, 0.9f, a.width * 0.8f));
-    }
-    // Dynamik: sustain om låten är komprimerad; parallellt så att anslaget behålls.
-    if (a.compression > 0.3f) {
+    // Dynamik: jämnare gitarr i en tät låt (parallellt, så att anslaget behålls).
+    if (f.sustain) {
         rig_.setIncludedInActive("sustain", true);
-        sustain_->amount.set(juce::jlimit(0.2f, 0.9f, 0.2f + 0.7f * a.compression));
-        sustain_->mix.set(0.6f);
+        sustain_->amount.set(f.sustainAmount);
+        sustain_->mix.set(f.sustainMix);
     }
-    // Tempo: delayn får låtens tempo (avstängd – slå på den om låten har eko).
-    if (a.bpm > 0.0f) {
+    // Tempo: delayn får låtens tempo men är avstängd – slå på den om låten har eko.
+    if (f.delayBpm > 0.0f) {
         rig_.setIncludedInActive("delay", true);
-        delay_->tempoBpm.set(std::round(juce::jlimit(40.0f, 240.0f, a.bpm)));
+        delay_->tempoBpm.set(f.delayBpm);
+        delay_->division.set(static_cast<float>(f.delayDivision));
         engine_.chain().setEnabled(rig_.findEffect("delay")->slot, false);
     }
+    // Ingen widener: gitarren ligger smal i bandet.
     rig_.syncFromLive();
     return i;
 }
@@ -379,6 +378,8 @@ void GuitarFXProcessor::getStateInformation(juce::MemoryBlock& destData) {
     state.setProperty("appearance",   appearance.load(), nullptr);
     state.setProperty("tuning",       tuning.load(), nullptr);
     state.setProperty("referenceA4",  referenceA4.load(), nullptr);
+    state.setProperty("screensaver",  screensaver.load(), nullptr);
+    state.setProperty("screensaverMinutes", screensaverMinutes.load(), nullptr);
     state.setProperty("cabIr",        irFile_.getFullPathName(), nullptr);
     state.setProperty("rig",          juce::JSON::toString(rigToJson(), true), nullptr);
     juce::MemoryOutputStream stream(destData, false);
@@ -402,6 +403,8 @@ void GuitarFXProcessor::setStateInformation(const void* data, int sizeInBytes) {
     appearance.store(juce::jlimit(0, 2, static_cast<int>(state.getProperty("appearance", 0))));
     tuning.store(juce::jmax(0, static_cast<int>(state.getProperty("tuning", 0))));
     referenceA4.store(juce::jlimit(420.0f, 460.0f, static_cast<float>(state.getProperty("referenceA4", 440.0f))));
+    screensaver.store(juce::jlimit(0, 4, static_cast<int>(state.getProperty("screensaver", 0))));
+    screensaverMinutes.store(juce::jlimit(1, 60, static_cast<int>(state.getProperty("screensaverMinutes", 5))));
 
     const juce::String ir = state.getProperty("cabIr", "").toString();
     if (ir.isNotEmpty() && juce::File(ir).existsAsFile()) loadImpulseResponse(juce::File(ir));

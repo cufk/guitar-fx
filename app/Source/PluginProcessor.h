@@ -8,6 +8,7 @@
 #include "engine/Engine.h"
 #include "engine/Rig.h"
 #include "engine/SongAnalyzer.h"
+#include "engine/GuitarFit.h"
 #include "dsp/effects/Cabinet.h"
 #include "dsp/effects/Chorus.h"
 #include "dsp/effects/Distortion.h"
@@ -77,8 +78,9 @@ public:
     juce::var rigToJson() const;
     bool rigFromJson(const juce::var& json);
 
-    // Skapa ett preset från en låtanalys (meddelandetråden). Returnerar presetets index.
-    int createPresetFromAnalysis(const gfx::SongAnalysis& a, const juce::String& name);
+    // Skapa ett preset där gitarren får plats i bandet (från GuitarFit, meddelandetråden).
+    // Returnerar presetets index.
+    int createPresetFromAnalysis(const gfx::GuitarFit& fit, const juce::String& name);
 
     // Senast mottagna MIDI-meddelande (för att visa i GUI:t), t.ex. "PC 3".
     juce::String lastMidiDescription() const;
@@ -88,6 +90,12 @@ public:
     // Stämapparat: vald stämning (index i ui::tunings()) och referens A4 (sparas i state).
     std::atomic<int> tuning { 0 };
     std::atomic<float> referenceA4 { 440.0f };
+    // Skärmsläckare: 0 = ingen, 1–4 = Strömmar, Klot, Terräng, Form; start efter N minuters
+    // inaktivitet (sparas i state).
+    std::atomic<int> screensaver { 0 };
+    std::atomic<int> screensaverMinutes { 5 };
+    // Räknas upp för varje mottaget MIDI-meddelande (GUI:t ser det som aktivitet).
+    int midiEventCount() const { return midiEvents_.load(std::memory_order_relaxed); }
 
 private:
     void timerCallback() override;
@@ -121,7 +129,8 @@ private:
     // meddelandetråden utför det (Rig är inte realtidssäker).
     enum : int { kCmdNone = -1000, kCmdBase = -1, kCmdNext = -2, kCmdPrev = -3 };
     std::atomic<int> pendingCommand_ { kCmdNone };
-    std::atomic<int> lastMidi_ { -1 };   // kodat: typ << 16 | nummer << 8 | värde
+    std::atomic<int> lastMidi_ { -1 };
+    std::atomic<int> midiEvents_ { 0 };   // kodat: typ << 16 | nummer << 8 | värde
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(GuitarFXProcessor)
 };

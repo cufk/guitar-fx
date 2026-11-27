@@ -8,7 +8,7 @@ juce::String S(const char* utf8) { return juce::String::fromUTF8(utf8); }
 }
 
 GuitarFXEditor::GuitarFXEditor(GuitarFXProcessor& p)
-    : AudioProcessorEditor(&p), processor_(p), setlist_(p), meter_(p), grid_(p, [this](int i) { panel_.show(i); }), panel_(p), tuner_(p), analysisView_(p) {
+    : AudioProcessorEditor(&p), processor_(p), setlist_(p), meter_(p), grid_(p, [this](int i) { panel_.show(i); }), panel_(p), tuner_(p), analysisView_(p), saver_(p) {
     applyAppearance(true);
     setLookAndFeel(&lnf_);
     // Menyer, dialoger och popovers ritas i egna fönster – ge dem samma tema.
@@ -16,21 +16,34 @@ GuitarFXEditor::GuitarFXEditor(GuitarFXProcessor& p)
 
     header_.more.onClick = [this] { showMoreMenu(); };
     header_.boost.onClick = [this] { processor_.toggleBoost(); };
+    header_.screensaver.onClick = [this] { showScreensaverMenu(); };
+    saver_.onWake = [this] { saver_.stop(); userActivity(); };
+    juce::Desktop::getInstance().addGlobalMouseListener(&activity_);
+    lastActivityMs_ = juce::Time::getMillisecondCounterHiRes();
+    lastMidiEvents_ = p.midiEventCount();
     setlist_.analyse.onClick = [this] { setAnalysisOpen(!analysisView_.isOpen()); };
     analysisView_.onClose = [this] { setAnalysisOpen(false); };
 
     for (juce::Component* c : std::initializer_list<juce::Component*> { &header_, &meter_, &tuner_, &setlist_, &grid_, &panel_ })
         addAndMakeVisible(c);
     addChildComponent(analysisView_);
+    addChildComponent(saver_);   // överst; varningar ritas ändå ovanpå (paintOverChildren)
 
     setWantsKeyboardFocus(true);
+   #if JUCE_IOS
+    // iPad: helskärm i liggande läge – fönstret bestämmer storleken (iPad mini: 1133 × 744).
+    setResizable(false, false);
+    setSize(1194, 834);
+   #else
     setResizable(true, true);
     setResizeLimits(1040, 790, 2600, 1800);
     setSize(1320, 900);
+   #endif
     startTimerHz(30);
 }
 
 GuitarFXEditor::~GuitarFXEditor() {
+    juce::Desktop::getInstance().removeGlobalMouseListener(&activity_);
     processor_.engine().latencyProbe().cancel();
     juce::LookAndFeel::setDefaultLookAndFeel(nullptr);
     setLookAndFeel(nullptr);
@@ -76,6 +89,17 @@ void GuitarFXEditor::timerCallback() {
     const auto boostText = "+" + juce::String(bdb, gfx::sameValue(bdb, std::floor(bdb)) ? 0 : 1).replaceCharacter('.', ',') + " dB";
     if (header_.boost.suffix != boostText) { header_.boost.suffix = boostText; header_.boost.repaint(); }
     if (meter_.pillWidth() != meterPillWidth_) resized();   // ingångsläget ändrat
+
+    // Skärmsläckare: etikett, MIDI som aktivitet och start efter inaktivitet.
+    const int mode = processor_.screensaver.load();
+    const auto saverText = juce::String::fromUTF8(ui::ScreenSaver::shortName(mode));
+    if (header_.screensaver.getButtonText() != saverText) header_.screensaver.setButtonText(saverText);
+    if (const int midi = processor_.midiEventCount(); midi != lastMidiEvents_) { lastMidiEvents_ = midi; userActivity(); }
+    const double idleMs = juce::Time::getMillisecondCounterHiRes() - lastActivityMs_;
+    if (mode > 0 && !saver_.isRunning() && !analysisView_.isOpen()
+        && juce::ModalComponentManager::getInstance()->getNumModalComponents() == 0
+        && idleMs > processor_.screensaverMinutes.load() * 60000.0)
+        { saverStartedMs_ = juce::Time::getMillisecondCounterHiRes(); saver_.start(mode); }
     panel_.refresh();
     setlist_.refresh();
 
@@ -87,6 +111,37 @@ void GuitarFXEditor::timerCallback() {
     if ((before > 15) != (stalledTicks_ > 15)) repaint();
 
     if (++tick_ % 15 == 0) applyAppearance(false);
+}
+
+void GuitarFXEditor::userActivity() {
+    const double now = juce::Time::getMillisecondCounterHiRes();
+    lastActivityMs_ = now;
+    // Kort startperiod så att menyn som just stängdes inte väcker direkt.
+    if (saver_.isRunning() && now - saverStartedMs_ > 600.0) saver_.stop();
+}
+
+void GuitarFXEditor::showScreensaverMenu() {
+    const int cur = processor_.screensaver.load(), mins = processor_.screensaverMinutes.load();
+    juce::PopupMenu m;
+    m.addSectionHeader(S("Skärmsläckare"));
+    for (int i = 0; i < ui::ScreenSaver::NumModes; ++i)
+        m.addItem(1 + i, juce::String::fromUTF8(ui::ScreenSaver::modeName(i)), true, cur == i);
+    m.addSeparator();
+    juce::PopupMenu after;
+    for (int v : { 1, 5, 15 }) after.addItem(100 + v, juce::String(v) + " min", true, mins == v);
+    m.addSubMenu(S("Starta efter"), after, cur > 0);
+    m.addItem(200, S("Visa nu"), cur > 0);
+    juce::Component::SafePointer<GuitarFXEditor> safe(this);
+    m.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&header_.screensaver), [safe](int r) {
+        if (!safe || r == 0) return;
+        auto& p = safe->processor_;
+        if (r >= 1 && r <= ui::ScreenSaver::NumModes) p.screensaver.store(r - 1);
+        else if (r > 100 && r < 200) p.screensaverMinutes.store(r - 100);
+        else if (r == 200) juce::Timer::callAfterDelay(250, [safe] {   // efter att menyn stängts
+            if (safe) { safe->saverStartedMs_ = juce::Time::getMillisecondCounterHiRes(); safe->saver_.start(safe->processor_.screensaver.load()); }
+        });
+        safe->userActivity();
+    });
 }
 
 void GuitarFXEditor::setAnalysisOpen(bool open) {
@@ -108,7 +163,7 @@ void GuitarFXEditor::paintOverChildren(juce::Graphics& g) {
     auto r = juce::Rectangle<int>(w, 44).withCentre({ getWidth() / 2, header_.getBounds().getCentreY() });
     ui::drawTile(g, r.toFloat(), 22.0f, ui::palette().danger);
     g.setColour(juce::Colours::white);
-    g.fillEllipse(r.getX() + 18.0f, r.getCentreY() - 4.0f, 8.0f, 8.0f);
+    g.fillEllipse(static_cast<float>(r.getX()) + 18.0f, static_cast<float>(r.getCentreY()) - 4.0f, 8.0f, 8.0f);
     g.setFont(ui::font(15.0f, ui::Weight::SemiBold));
     g.drawText(text, r.withTrimmedLeft(24), juce::Justification::centred);
 }
@@ -124,6 +179,13 @@ void GuitarFXEditor::resized() {
     const int boostW = 150, b = ui::size::button;
     const int boostRight = meter_.getRight() - meterPillWidth_ - 16 - head.getX();
     header_.boost.setBounds(boostRight - boostW, (head.getHeight() - b) / 2, boostW, b);
+    // Skärmsläckare (rullgardin) till vänster om Boost – bredd för det längsta korta namnet.
+    int saverW = 0;
+    for (int i = 0; i < ui::ScreenSaver::NumModes; ++i) {
+        header_.screensaver.setSize(10, b);
+        saverW = juce::jmax(saverW, header_.screensaver.idealWidth(juce::String::fromUTF8(ui::ScreenSaver::shortName(i))));
+    }
+    header_.screensaver.setBounds(header_.boost.getX() - 16 - saverW, (head.getHeight() - b) / 2, saverW, b);
     r.removeFromTop(24);
     tuner_.setBounds(r.removeFromBottom(72));
     r.removeFromBottom(24);
@@ -132,6 +194,7 @@ void GuitarFXEditor::resized() {
     grid_.setBounds(r.removeFromTop(ui::EffectGrid::preferredHeight()));
     panel_.setBounds(r);
     analysisView_.setBounds(setlist_.getBounds().getUnion(panel_.getBounds()).getUnion(grid_.getBounds()));
+    saver_.setBounds(getLocalBounds());
 }
 
 // Ta tangentbordsfokus när fönstret visas, så att 1–9/←/→ (och pedaler som
@@ -145,6 +208,8 @@ void GuitarFXEditor::visibilityChanged() {
 bool GuitarFXEditor::keyPressed(const juce::KeyPress& k) {
     auto& rig = processor_.rig();
     const auto c = k.getTextCharacter();
+    if (saver_.isRunning()) { userActivity(); return true; }   // första tangenten väcker bara
+    userActivity();
     if (c == 't' || c == 'T') { tuner_.toggleMute(); return true; }
     if (c == 'b' || c == 'B') { processor_.toggleBoost(); return true; }
     if (k == juce::KeyPress::spaceKey) { processor_.tapTempo(); return true; }
@@ -233,6 +298,14 @@ void GuitarFXEditor::startLatencyMeasurement() {
 }
 
 void GuitarFXEditor::exportPresets() {
+   #if JUCE_IOS
+    // iPad: filen skrivs först i appens mapp; Filer-appen kopierar den sedan dit man väljer.
+    const auto file = ui::appDataDirectory().getChildFile("Stagebox-presets.json");
+    file.getParentDirectory().createDirectory();
+    file.replaceWithText(juce::JSON::toString(processor_.rigToJson()));
+    chooser_ = std::make_unique<juce::FileChooser>(S("Exportera presets"), file, "*.json");
+    chooser_->launchAsync(juce::FileBrowserComponent::saveMode, [](const juce::FileChooser&) {});
+   #else
     chooser_ = std::make_unique<juce::FileChooser>(S("Exportera presets"),
         juce::File::getSpecialLocation(juce::File::userDocumentsDirectory).getChildFile("Stagebox-presets.json"), "*.json");
     chooser_->launchAsync(juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::warnAboutOverwriting,
@@ -241,6 +314,7 @@ void GuitarFXEditor::exportPresets() {
                               if (f == juce::File()) return;
                               f.replaceWithText(juce::JSON::toString(processor_.rigToJson()));
                           });
+   #endif
 }
 
 void GuitarFXEditor::importPresets() {
@@ -248,7 +322,7 @@ void GuitarFXEditor::importPresets() {
         juce::File::getSpecialLocation(juce::File::userDocumentsDirectory), "*.json");
     chooser_->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
                           [this](const juce::FileChooser& fc) {
-                              const auto f = fc.getResult();
+                              const auto f = ui::localCopyOf(fc, juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("Stagebox-import"));
                               if (f == juce::File()) return;
                               if (!processor_.rigFromJson(juce::JSON::parse(f)))
                                   juce::AlertWindow::showAsync(juce::MessageBoxOptions().withTitle(S("Kunde inte importera"))
