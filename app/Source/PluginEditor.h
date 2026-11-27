@@ -11,6 +11,7 @@
 #include "PluginProcessor.h"
 #include "ui/Theme.h"
 #include "ui/Widgets.h"
+#include "ui/ScreenSaver.h"
 
 class GuitarFXEditor final : public juce::AudioProcessorEditor, private juce::Timer {
 public:
@@ -25,6 +26,24 @@ public:
 
 private:
     void timerCallback() override;
+    // Skärmsläckare: aktivitet (mus/beröring var som helst i appen, tangent, MIDI) nollställer
+    // tiden; första klicket när den visas väcker bara.
+    void showScreensaverMenu();
+    void userActivity();
+    struct ActivityListener final : public juce::MouseListener {
+        explicit ActivityListener(GuitarFXEditor& e) : owner(e) {}
+        // JUCE skickar konstgjorda musrörelser när en komponent dyker upp under pekaren –
+        // bara verkliga rörelser (> 3 px) räknas som aktivitet.
+        void mouseMove(const juce::MouseEvent& e) override {
+            const auto p = e.getScreenPosition();
+            if (p.getDistanceFrom(last) > 3) { last = p; owner.userActivity(); }
+        }
+        void mouseDown(const juce::MouseEvent&) override { owner.userActivity(); }
+        void mouseDrag(const juce::MouseEvent&) override { owner.userActivity(); }
+        void mouseWheelMove(const juce::MouseEvent&, const juce::MouseWheelDetails&) override { owner.userActivity(); }
+        GuitarFXEditor& owner;
+        juce::Point<int> last;
+    };
     void applyAppearance(bool force);
     void showMoreMenu();
     void showInputPanel();
@@ -43,6 +62,10 @@ private:
     ui::EffectPanel panel_;
     ui::TunerStrip tuner_;
     ui::AnalysisView analysisView_;
+    ui::ScreenSaver saver_;
+    ActivityListener activity_ { *this };
+    double lastActivityMs_ = 0.0, saverStartedMs_ = 0.0;
+    int lastMidiEvents_ = 0;
     juce::TooltipWindow tooltips_ { this, 700 };
     std::unique_ptr<juce::FileChooser> chooser_;
 

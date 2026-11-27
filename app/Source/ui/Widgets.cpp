@@ -1512,6 +1512,11 @@ HeaderBar::HeaderBar() {
     boost.setClickingTogglesState(false);
     boost.setTooltip(S("Solo-boost på/av (B / fotswitch CC 106). Mängden ställs in i Volym."));
     addAndMakeVisible(boost);
+    screensaver.symbol = icons::Symbol::Particles;
+    screensaver.showSymbol = true;
+    screensaver.chevron = true;
+    screensaver.setTooltip(S("Skärmsläckare"));
+    addAndMakeVisible(screensaver);
 }
 
 void HeaderBar::paint(juce::Graphics& g) {

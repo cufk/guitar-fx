@@ -40,6 +40,11 @@ Raspberry Pi eller egen pedal.
   (MIDI CC 107). Låtanalysen sätter delayns tempo efter låten. Svansen klingar ut vid byte.
 - **Volym och boost:** nivå per preset (så att alla låtar låter lika starkt) och en solo-boost
   uppe till höger (B / MIDI CC 106) som höjer med inställd mängd oavsett preset.
+- **Skärmsläckare:** välj i rullgardinen uppe till höger – *Ingen skärmsläckare*, *Strömmar*,
+  *Klot*, *Terräng* eller *Form*. Monokroma punkteffekter som styrs av gitarren (nivå, bas,
+  diskant, anslag), alltid mörka och helt utan text. Startar efter 1, 5 (standard) eller 15
+  minuter utan mus, beröring, tangent eller pedal; *Visa nu* provar direkt. Första
+  beröringen/tangenten väcker bara – den trycker inte på något i appen. Ljudet påverkas aldrig.
 - **Låtanalys → gitarrens plats i bandet:** välj en inspelning av låten (WAV/AIFF/FLAC/MP3/M4A).
   Appen lyssnar på var bas, kick, sång och rum tar plats och föreslår ett preset där gitarren
   passar in i bandet – den härmar inte hela låten. Allt sker lokalt.

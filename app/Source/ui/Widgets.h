@@ -300,6 +300,7 @@ public:
     void resized() override;
     IconButton more { icons::Symbol::More, juce::String::fromUTF8("Inställningar") };
     Pill boost { "Boost" };
+    Pill screensaver { "Av", false };   // rullgardin: skärmsläckare (Ingen / Strömmar / Klot / Terräng / Form)
 private:
     std::unique_ptr<juce::Drawable> logo_;
     bool logoDark_ = false;

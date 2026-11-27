@@ -139,6 +139,12 @@ void draw(juce::Graphics& g, Symbol s, juce::Rectangle<float> r, juce::Colour c,
     const float k = juce::jmin(r.getWidth(), r.getHeight()) * 0.5f;
     juce::Path p;
     switch (s) {
+        case Symbol::Particles: {   // punktmoln (skärmsläckare)
+            const float pts[7][3] = { { -0.55f, -0.35f, 0.16f }, { 0.05f, -0.6f, 0.11f }, { 0.55f, -0.25f, 0.14f }, { -0.2f, 0.05f, 0.2f },
+                                      { 0.4f, 0.35f, 0.12f }, { -0.55f, 0.5f, 0.1f }, { 0.1f, 0.6f, 0.15f } };
+            for (const auto& q : pts) g.fillEllipse(ctr.x + q[0] * k - q[2] * k, ctr.y + q[1] * k - q[2] * k, q[2] * k * 2, q[2] * k * 2);
+            return;
+        }
         case Symbol::Dot:
             g.fillEllipse(ctr.x - k * 0.4f, ctr.y - k * 0.4f, k * 0.8f, k * 0.8f);
             return;

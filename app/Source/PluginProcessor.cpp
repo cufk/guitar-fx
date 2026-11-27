@@ -174,6 +174,7 @@ void GuitarFXProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
     // CC 105 = tysta ut (stämning) på/av, CC 106 = boost på/av, CC 107 = tap tempo.
     for (const auto meta : midi) {
         const auto m = meta.getMessage();
+        midiEvents_.fetch_add(1, std::memory_order_relaxed);
         if (m.isProgramChange()) {
             pendingCommand_.store(m.getProgramChangeNumber(), std::memory_order_release);
             lastMidi_.store((1 << 16) | (m.getProgramChangeNumber() << 8), std::memory_order_relaxed);
@@ -377,6 +378,8 @@ void GuitarFXProcessor::getStateInformation(juce::MemoryBlock& destData) {
     state.setProperty("appearance",   appearance.load(), nullptr);
     state.setProperty("tuning",       tuning.load(), nullptr);
     state.setProperty("referenceA4",  referenceA4.load(), nullptr);
+    state.setProperty("screensaver",  screensaver.load(), nullptr);
+    state.setProperty("screensaverMinutes", screensaverMinutes.load(), nullptr);
     state.setProperty("cabIr",        irFile_.getFullPathName(), nullptr);
     state.setProperty("rig",          juce::JSON::toString(rigToJson(), true), nullptr);
     juce::MemoryOutputStream stream(destData, false);
@@ -400,6 +403,8 @@ void GuitarFXProcessor::setStateInformation(const void* data, int sizeInBytes) {
     appearance.store(juce::jlimit(0, 2, static_cast<int>(state.getProperty("appearance", 0))));
     tuning.store(juce::jmax(0, static_cast<int>(state.getProperty("tuning", 0))));
     referenceA4.store(juce::jlimit(420.0f, 460.0f, static_cast<float>(state.getProperty("referenceA4", 440.0f))));
+    screensaver.store(juce::jlimit(0, 4, static_cast<int>(state.getProperty("screensaver", 0))));
+    screensaverMinutes.store(juce::jlimit(1, 60, static_cast<int>(state.getProperty("screensaverMinutes", 5))));
 
     const juce::String ir = state.getProperty("cabIr", "").toString();
     if (ir.isNotEmpty() && juce::File(ir).existsAsFile()) loadImpulseResponse(juce::File(ir));
