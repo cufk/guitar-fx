@@ -40,8 +40,9 @@ Raspberry Pi eller egen pedal.
   (MIDI CC 107). Låtanalysen sätter delayns tempo efter låten. Svansen klingar ut vid byte.
 - **Volym och boost:** nivå per preset (så att alla låtar låter lika starkt) och en solo-boost
   uppe till höger (B / MIDI CC 106) som höjer med inställd mängd oavsett preset.
-- **Låtanalys → preset:** välj en låt (WAV/AIFF/FLAC/MP3/M4A). Appen analyserar klang,
-  rum, bredd, dynamik och tempo lokalt och föreslår ett preset med låtens namn.
+- **Låtanalys → gitarrens plats i bandet:** välj en inspelning av låten (WAV/AIFF/FLAC/MP3/M4A).
+  Appen lyssnar på var bas, kick, sång och rum tar plats och föreslår ett preset där gitarren
+  passar in i bandet – den härmar inte hela låten. Allt sker lokalt.
 - **Stämapparat alltid synlig:** ett lågt fält längst ned visar ton, skala −50…+50 cent,
   avvikelse och strängarna i vald stämning (Standard, Drop D, halvton/helton ner, Drop C,
   DADGAD, Open G/D/E/C eller Kromatisk). **Mute** (eller T / MIDI CC 105) stänger av ljudet
@@ -270,26 +271,31 @@ MIDI-ingångar (även Bluetooth-MIDI-pedaler som parats i macOS *Ljud-MIDI-inst�
 skickar tangenttryck (sidvändare för noter) fungerar direkt med ←/→ eller Page Up/Down.
 Senast mottagna MIDI visas längst ned till höger.
 
-## Låtanalys
+## Låtanalys – gitarrens plats i bandet
 
-Tryck på ikonen med ljudvågen bredvid **+** längst ned (eller ⋯ → Analysera låt…) och välj en ljudfil. Analysen tar
-någon sekund och sker helt lokalt – inget laddas upp och ingen modell laddas ner.
+Tryck på ikonen med ljudvågen bredvid **+** (eller ⋯ → Analysera låt…) och välj en inspelning
+av låten. Analysen tar någon sekund och sker helt lokalt – inget laddas upp och ingen modell
+laddas ner.
 
-| Område | Vad som mäts | Blir i presetet |
+Målet är att gitarren ska **passa in i bandet**, inte låta som hela låten. Därför mäts var
+mixen redan är full och gitarren får det som blir över (vanlig mixpraxis för akustisk gitarr):
+
+| Område | Vad som mäts i låten | Blir för gitarren |
 |---|---|---|
-| Klang | Tersbandsspektrum jämfört med en referenskurva för inspelad musik | EQ: lågskärning, bas, diskant; mitt bara vid tydlig topp/dal |
-| Rum | Stereo: koherens mellan vänster och höger (efterklang gör kanalerna osammanhängande). Mono: sen avklingning i fria avklingningar | Reverb: efterklang 0,8–4 s, mix 12–40 %, predelay, storlek |
-| Bredd | Sida/mitt-förhållande, minus den bredd som kommer från rummet | Widener (om låten är panorerat bred) |
-| Dynamik | Spridning i korttidsnivå (p95 − p10) | Sustain (om låten är komprimerad) |
-| Tempo | Anslagsrytm, 60–180 BPM | Visas (används för delay senare) |
+| Botten | Bas och kick/subbas (40–160 Hz) jämfört med en referenskurva för inspelad musik | Mycket bas → högre lågskärning (upp till 150 Hz) och basen sänks. Glest utan bas → gitarren får bära botten (85 Hz) |
+| Lågmitt | Fullhet kring 200–400 Hz | Full mix (med bas) → gitarren sänks kring 300 Hz, mindre grötigt |
+| Närvaro | Minst upptagna frekvensen i 2–5 kHz | En liten höjning i den "fickan", så att gitarren hörs bredvid sången |
+| Diskant | Luft i mixen (5–11 kHz) | Mörk mix → gitarren står för luften. Ljus mix → lämnas |
+| Rum | Stereo: koherens mellan vänster och höger. Mono: sen avklingning | Reverb lite torrare än låten (högst 15 % i ett fullt band) och predelay efter tempot |
+| Dynamik | Spridning i korttidsnivå | Tät, komprimerad låt → sustain så att gitarren inte försvinner |
+| Tempo | Anslagsrytm, 60–180 BPM | Delayns tempo (1/8 punkterad) – avstängd, slå på vid behov |
 
-**Skapa preset** lägger till ett preset med låtens namn och aktiverar det. Analysen lyssnar på
-hela mixen (sång, trummor), så se förslaget som en startpunkt och justera med öronen.
+Ingen widener: gitarren ligger smal i bandet. **Skapa preset** lägger till ett preset med
+låtens namn och aktiverar det – se det som en startpunkt och justera med öronen.
 
-Rummet mäts säkrast i **stereoinspelningar**. I mono jämförs fria avklingningar; finns för få
-blir förslaget ett försiktigt standardval (1,5 s, 15 %) – rutan *Rum* visar hur det mättes.
-Analysen är kalibrerad mot ett urval Creative Commons-inspelningar och mot en torr gitarr med
-känd tillagd efterklang (1 / 2,5 / 5 s gav 2,1 / 3,0 / 3,9 s i förslag).
+Provat på Creative Commons-inspelningar: ett rockband med tung kick gav lågskärning 150 Hz, bas
+−3 dB och sustain; en glesare unplugged-låt (gitarr + sång) behöll botten (85 Hz) och fick en
+liten närvarohöjning; en mörk bluegrassinspelning fick +3 dB diskant.
 
 ## Mäta latens (färdplanens steg 2)
 
@@ -338,7 +344,7 @@ referens när effekterna utvecklas.
 6. ✅ EQ med notch, grundljud + presets, MIDI/tangenter
 7. ✅ Sustain (kompressor), widener, mono-utgång, monokromt GUI (nu med lodräta reglage)
 8. ✅ Stämapparat
-9. ✅ Låtanalys → förslag på preset (signalanalys, lokalt)
+9. ✅ Låtanalys → gitarrens plats i bandet (signalanalys, lokalt)
 10. ✅ Delay med tap tempo, rundgångsskydd, kroppsklang, dubblare/oktav, tremolo, volym/boost
 11. Looper; egna kropps-IR:er (faltning) som tillval
 12. MIDI learn (valfria meddelanden per preset), scenläge med extra stora knappar

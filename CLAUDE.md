@@ -46,8 +46,12 @@ Driftsäkerhet live är huvudkravet. Svara på svenska.
 - Stämapparat: lågt fält längst ned (`TunerStrip`), stämningar i `ui::tunings()`, valet och
   A4 sparas i processorns state. `engine/TunerTap.h` (ljudtråden kopierar torr ingång till
   ringbuffert; "Mute" gäller bara medan GUI:t är öppet) + `dsp/core/PitchDetector.h` (YIN).
-- Låtanalys: `engine/SongAnalyzer` (ren signalanalys: klang, rum, bredd, dynamik, tempo) körs
-  i egen tråd från `AnalysisView`; `GuitarFXProcessor::createPresetFromAnalysis` gör preset.
+- Låtanalys: `engine/SongAnalyzer` (ren signalanalys av hela mixen: balans per område, rum,
+  bredd, dynamik, tempo) körs i egen tråd från `AnalysisView`. `engine/GuitarFit` översätter
+  till gitarrens plats i bandet – gitarren ska KOMPLETTERA mixen, inte härma den (användarens
+  krav): mycket bas → högre lågskärning och basavsänkning, full lågmitt → sänkning, ficka i
+  2–5 kHz → liten höjning, mörk mix → diskant, rum torrare än låten, ingen widener.
+  `GuitarFXProcessor::createPresetFromAnalysis(GuitarFit)` gör presetet.
   Rum: stereo via L/R-koherens, mono via sen avklingning (tvådelad anpassning), annars
   standardval. Mät aldrig rum som "median av avklingning" i tät musik – det ger alltid max.
   Kalibrerat mot CC-låtar från Internet Archive (testas lokalt, checkas inte in).

@@ -14,6 +14,7 @@
 #include "dsp/effects/Widener.h"
 #include "engine/Rig.h"
 #include "engine/SongAnalyzer.h"
+#include "engine/GuitarFit.h"
 #include "dsp/effects/Flanger.h"
 #include "dsp/effects/Reverb.h"
 #include "dsp/effects/Distortion.h"
@@ -1528,6 +1529,66 @@ int main() {
         std::printf("       bas: %.1f -> %.1f dB, diskant: %.1f -> %.1f dB\n", neutral.lowGainDb, bassy.lowGainDb, neutral.highGainDb, dark.highGainDb);
         CHECK(bassy.lowGainDb > neutral.lowGainDb + 1.5f);
         CHECK(dark.highGainDb < neutral.highGainDb - 1.5f);
+    });
+
+    run("Gitarrens plats i bandet: kompletterar mixen i stället för att härma den", [&] {
+        // "Mix" med ungefär musikens frekvensbalans: rosa brus (Kellet) som rullar av över ~3 kHz.
+        auto base = makeSong(100.0f, 0.6f, 20, 6);
+        std::mt19937 rng(7);
+        std::normal_distribution<float> nd(0.0f, 1.0f);
+        float b0 = 0, b1 = 0, b2 = 0, lp = 0;
+        const float lpc = 1.0f - std::exp(-2.0f * 3.14159265f * 3000.0f / static_cast<float>(kSr));
+        for (auto& v : base) {
+            const float w = nd(rng);
+            b0 = 0.99765f * b0 + w * 0.0990460f; b1 = 0.96300f * b1 + w * 0.2965164f; b2 = 0.57000f * b2 + w * 1.0526913f;
+            const float pink = b0 + b1 + b2 + w * 0.1848f;
+            lp += lpc * (pink - lp);
+            v += 0.02f * lp;
+        }
+        // lowCut, basshelf, mitt (frekvens, dB), diskant -> analys av den färgade "mixen"
+        auto mix = [&](float lowCut, float lowDb, float midHz, float midDb, float highDb) {
+            gfx::Eq q;
+            q.lowCutHz.set(lowCut); q.lowGainDb.set(lowDb); q.midFreqHz.set(midHz); q.midGainDb.set(midDb); q.highGainDb.set(highDb);
+            q.prepare({ kSr, kBlock, 1 });
+            auto y = base;
+            for (int start = 0; start < int(y.size()); start += kBlock) {
+                float* p[1] = { y.data() + start };
+                q.process({ p, 1, std::min(kBlock, int(y.size()) - start) });
+            }
+            return gfx::analyseSong(y.data(), nullptr, int(y.size()), kSr);
+        };
+        const auto neutral = gfx::fitGuitarToSong(mix(20, 0, 800, 0, 0));
+        const auto bassy   = gfx::fitGuitarToSong(mix(20, 10, 800, 0, 0));
+        const auto lean    = gfx::fitGuitarToSong(mix(250, 0, 800, 0, 0));
+        const auto dark    = gfx::fitGuitarToSong(mix(20, 0, 800, 0, -10));
+        const auto bright  = gfx::fitGuitarToSong(mix(20, 0, 800, 0, 10));
+        const auto muddy   = gfx::fitGuitarToSong(mix(20, 0, 300, 9, 0));
+        std::printf("       lågskärning: glest %.0f / neutral %.0f / basigt %.0f Hz (bas %.1f dB), diskant: mörk %+.0f / ljus %+.0f dB, gröt: %.0f Hz %+.1f dB\n",
+                    lean.lowCutHz, neutral.lowCutHz, bassy.lowCutHz, bassy.lowShelfDb, dark.highDb, bright.highDb, muddy.midHz, muddy.midDb);
+        // Mycket bas i låten -> gitarren skärs högre och får MINDRE bas (inte mer).
+        CHECK(bassy.lowCutHz > neutral.lowCutHz);
+        CHECK(bassy.lowShelfDb < 0.0f);
+        CHECK(lean.lowCutHz < neutral.lowCutHz);
+        // Mörk mix -> gitarren står för luften; ljus mix -> ingen extra diskant.
+        CHECK(dark.highDb >= 2.0f);
+        CHECK(bright.highDb <= 1.0f);
+        // Full lågmitt -> sänkning kring 200–400 Hz.
+        CHECK(muddy.midDb < 0.0f && muddy.midHz >= 200.0f && muddy.midHz <= 400.0f);
+        // Förklaringar finns.
+        CHECK(!bassy.spaceText.empty() && !bassy.roomText.empty() && !bassy.dynamicsText.empty() && !bassy.tempoText.empty());
+    });
+
+    run("Gitarrens plats i bandet: rummet blir torrare än låtens, ogiltig analys ger standard", [&] {
+        gfx::SongAnalysis wet;
+        wet.valid = true;
+        wet.roomMeasure = gfx::SongAnalysis::RoomMeasure::Stereo;
+        wet.reverbDecaySec = 3.0f; wet.reverbMix = 0.35f; wet.bpm = 120.0f;
+        const auto f = gfx::fitGuitarToSong(wet);
+        CHECK(f.reverbDecaySec < wet.reverbDecaySec && f.reverbMix < wet.reverbMix);
+        CHECK(f.reverbPredelayMs >= 15.0f && f.reverbPredelayMs <= 40.0f);
+        CHECK(std::fabs(f.delayBpm - 120.0f) < 0.5f);
+        const auto none = gfx::fitGuitarToSong(gfx::SongAnalysis {});
+        CHECK(none.spaceText.empty() && !none.sustain);
     });
 
     run("Låtanalys: komprimerad låt föreslår sustain, dynamisk gör det inte", [&] {

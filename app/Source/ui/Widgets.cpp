@@ -1311,7 +1311,7 @@ AnalysisView::AnalysisView(GuitarFXProcessor& proc) : proc_(proc) {
     create_.setToggleState(true, juce::dontSendNotification);   // primär knapp (svart)
     create_.onClick = [this] {
         if (state_ != State::Done) return;
-        proc_.createPresetFromAnalysis(result_, title_);
+        proc_.createPresetFromAnalysis(fit_, title_);
         if (onClose) onClose();
     };
     close_.onClick = [this] { if (onClose) onClose(); };
@@ -1382,6 +1382,7 @@ void AnalysisView::timerCallback() {
     if (state_ == State::Working && finished_.load()) {
         if (worker_.joinable()) worker_.join();
         state_ = result_.valid ? State::Done : State::Failed;
+        fit_ = gfx::fitGuitarToSong(result_);
         create_.setVisible(state_ == State::Done);
         choose_.setButtonText(state_ == State::Done ? S("Välj annan låt") : S("Välj låt…"));
         stopTimer();
@@ -1403,12 +1404,12 @@ void AnalysisView::paint(juce::Graphics& g) {
         auto box = body.withSizeKeepingCentre(juce::jmin(body.getWidth(), 640), 220);
         g.setColour(p.ink);
         g.setFont(font(26.0f, Weight::SemiBold));
-        g.drawText(S("Låt gitarren låta som i en låt"), box.removeFromTop(40), juce::Justification::centred, false);
+        g.drawText(S("Hitta gitarrens plats i en låt"), box.removeFromTop(40), juce::Justification::centred, false);
         g.setColour(state_ == State::Failed ? p.danger : p.secondaryInk);
         g.setFont(font(16.0f));
         const auto text = state_ == State::Failed ? error_
-            : S("Välj en ljudfil från datorn. Appen lyssnar på klang, rum, bredd, dynamik och tempo "
-                "och föreslår ett preset som du sedan kan justera. Allt sker lokalt.");
+            : S("Välj en inspelning av låten. Appen lyssnar på var bas, kick, sång och rum tar plats och "
+                "föreslår ett preset där gitarren passar in i bandet – den härmar inte hela låten. Allt sker lokalt.");
         g.drawFittedText(text, box.removeFromTop(90).reduced(20, 0), juce::Justification::centred, 3);
         return;
     }
@@ -1446,18 +1447,19 @@ void AnalysisView::paint(juce::Graphics& g) {
     g.setColour(p.secondaryInk);
     g.setFont(font(16.0f));
     g.drawText((a.bpm > 0 ? juce::String(juce::roundToInt(a.bpm)) + S(" BPM  ·  ") : juce::String())
-               + juce::String(juce::roundToInt(a.seconds / 60.0f)) + S(" min  ·  Förslag på preset – justera med öronen"),
+               + juce::String(juce::roundToInt(a.seconds / 60.0f)) + S(" min  ·  Gitarrens plats i bandet – justera med öronen"),
                top, juce::Justification::topLeft, true);
 
     const int gap = kGridGap;
     const int w = (body.getWidth() - gap * (kGridColumns - 1)) / kGridColumns;
     const int h = juce::jmin(body.getHeight() - 70, 300);
     struct Tile { const char* caption; juce::String value; juce::String unit; std::string text; };
+    const auto& f = fit_;
     const Tile tiles[4] = {
-        { "Klang", minusSign((a.lowGainDb >= 0 ? "+" : "") + juce::String(a.lowGainDb, 1).replaceCharacter('.', ',')), S("dB bas"), a.toneText },
-        { "Rum", juce::String(a.reverbDecaySec, 1).replaceCharacter('.', ','), S("s efterklang"), a.roomText },
-        { "Bredd", juce::String(juce::roundToInt(a.width * 100.0f)), S("%"), a.widthText },
-        { "Dynamik", juce::String(juce::roundToInt(a.loudnessRangeDb)), S("dB spridning"), a.dynamicsText },
+        { "Plats i bandet", juce::String(juce::roundToInt(f.lowCutHz)), S("Hz lågskärning"), f.spaceText },
+        { "Rum", juce::String(f.reverbDecaySec, 1).replaceCharacter('.', ','), S("s efterklang"), f.roomText },
+        { "Tempo", f.delayBpm > 0 ? juce::String(juce::roundToInt(f.delayBpm)) : S("–"), S("BPM"), f.tempoText },
+        { "Dynamik", f.sustain ? juce::String(juce::roundToInt(f.sustainAmount * 100.0f)) : S("–"), S("% sustain"), f.dynamicsText },
     };
     for (int i = 0; i < 4; ++i) {
         auto r = juce::Rectangle<int>(body.getX() + i * (w + gap), body.getY(), w, h);

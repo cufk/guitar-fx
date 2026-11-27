@@ -218,42 +218,40 @@ void GuitarFXProcessor::timerCallback() {
     cabinet_->collectGarbage();
 }
 
-int GuitarFXProcessor::createPresetFromAnalysis(const gfx::SongAnalysis& a, const juce::String& name) {
+int GuitarFXProcessor::createPresetFromAnalysis(const gfx::GuitarFit& f, const juce::String& name) {
     const int i = rig_.addPreset(name.toStdString());
     rig_.activate(i);
 
-    // Klang: EQ efter låtens frekvensbalans (notch lämnas orörd).
+    // Plats i bandet: lågskärning, bas, mittband (gröt-sänkning eller närvaro) och diskant.
+    // Notch lämnas orörd (den är till för rundgång).
     rig_.setIncludedInActive("eq", true);
-    eq_->lowCutHz.set(a.lowCutHz);
-    eq_->lowGainDb.set(a.lowGainDb);
-    eq_->midFreqHz.set(a.midHz);
-    eq_->midGainDb.set(a.midGainDb);
-    eq_->highGainDb.set(a.highGainDb);
+    eq_->lowCutHz.set(f.lowCutHz);
+    eq_->lowGainDb.set(f.lowShelfDb);
+    eq_->midFreqHz.set(f.midHz);
+    eq_->midGainDb.set(f.midDb);
+    eq_->highGainDb.set(f.highDb);
 
-    // Rum: reverb efter efterklang och mängd.
+    // Rum: lite torrare än låten, predelay efter tempot.
     rig_.setIncludedInActive("reverb", true);
-    reverb_->decaySec.set(a.reverbDecaySec);
-    reverb_->mix.set(a.reverbMix);
-    reverb_->predelayMs.set(a.reverbPredelayMs);
-    reverb_->size.set(juce::jlimit(0.3f, 1.0f, a.reverbDecaySec / 4.0f));
+    reverb_->decaySec.set(f.reverbDecaySec);
+    reverb_->mix.set(f.reverbMix);
+    reverb_->predelayMs.set(f.reverbPredelayMs);
+    reverb_->size.set(juce::jlimit(0.3f, 1.0f, f.reverbDecaySec / 3.0f));
 
-    // Bredd: widener bara om låten är tydligt stereo.
-    if (a.width > 0.25f) {
-        rig_.setIncludedInActive("widener", true);
-        widener_->width.set(juce::jlimit(0.2f, 0.9f, a.width * 0.8f));
-    }
-    // Dynamik: sustain om låten är komprimerad; parallellt så att anslaget behålls.
-    if (a.compression > 0.3f) {
+    // Dynamik: jämnare gitarr i en tät låt (parallellt, så att anslaget behålls).
+    if (f.sustain) {
         rig_.setIncludedInActive("sustain", true);
-        sustain_->amount.set(juce::jlimit(0.2f, 0.9f, 0.2f + 0.7f * a.compression));
-        sustain_->mix.set(0.6f);
+        sustain_->amount.set(f.sustainAmount);
+        sustain_->mix.set(f.sustainMix);
     }
-    // Tempo: delayn får låtens tempo (avstängd – slå på den om låten har eko).
-    if (a.bpm > 0.0f) {
+    // Tempo: delayn får låtens tempo men är avstängd – slå på den om låten har eko.
+    if (f.delayBpm > 0.0f) {
         rig_.setIncludedInActive("delay", true);
-        delay_->tempoBpm.set(std::round(juce::jlimit(40.0f, 240.0f, a.bpm)));
+        delay_->tempoBpm.set(f.delayBpm);
+        delay_->division.set(static_cast<float>(f.delayDivision));
         engine_.chain().setEnabled(rig_.findEffect("delay")->slot, false);
     }
+    // Ingen widener: gitarren ligger smal i bandet.
     rig_.syncFromLive();
     return i;
 }

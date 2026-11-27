@@ -8,6 +8,7 @@
 #include "engine/Engine.h"
 #include "engine/Rig.h"
 #include "engine/SongAnalyzer.h"
+#include "engine/GuitarFit.h"
 #include "dsp/effects/Cabinet.h"
 #include "dsp/effects/Chorus.h"
 #include "dsp/effects/Distortion.h"
@@ -77,8 +78,9 @@ public:
     juce::var rigToJson() const;
     bool rigFromJson(const juce::var& json);
 
-    // Skapa ett preset från en låtanalys (meddelandetråden). Returnerar presetets index.
-    int createPresetFromAnalysis(const gfx::SongAnalysis& a, const juce::String& name);
+    // Skapa ett preset där gitarren får plats i bandet (från GuitarFit, meddelandetråden).
+    // Returnerar presetets index.
+    int createPresetFromAnalysis(const gfx::GuitarFit& fit, const juce::String& name);
 
     // Senast mottagna MIDI-meddelande (för att visa i GUI:t), t.ex. "PC 3".
     juce::String lastMidiDescription() const;
