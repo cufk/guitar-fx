@@ -35,6 +35,11 @@ Driftsäkerhet live är huvudkravet. Svara på svenska.
   latens, MIDI) ligger i ⋯-menyn. Ingen färg utom rött för varningar.
   Effektrutorna: 14 effekter i sju kolumner (`kControlColumns`, samma som reglagen) i
   signalordning (sorterade på kedjeplats); kort namn i rutan, `EffectSpec::title` i panelen.
+  Skärmsläckare (`ui/ScreenSaver`): rullgardin i sidhuvudet (Ingen/Strömmar/Klot/Terräng/Form,
+  Starta efter 1/5/15 min, Visa nu), sparas i processorns state. Punkter ackumuleras i en
+  intensitetsbuffert → bild (alltid mörk, ingen text), styrs av TunerTap-avtappningen.
+  Aktivitet = global muslyssnare (bara verkliga rörelser > 3 px – JUCE skickar konstgjorda),
+  tangent, MIDI; första klicket väcker bara. 600 ms startperiod efter start.
   Boost-knappen i sidhuvudet (global, `Volume::setBoost`), Tap i delayns panel,
   Nollställ + `FilterView` för rundgångsskyddet.
   Reglagen: en rad med sju lika breda platser (`kControlColumns`) som fyller höjden – samma

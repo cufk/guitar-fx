@@ -71,7 +71,8 @@ target_sources(Stagebox PRIVATE
     Source/StandaloneApp.cpp
     Source/ui/Icons.cpp
     Source/ui/Theme.cpp
-    Source/ui/Widgets.cpp)
+    Source/ui/Widgets.cpp
+    Source/ui/ScreenSaver.cpp)
 
 target_compile_definitions(Stagebox PUBLIC
     JUCE_WEB_BROWSER=0

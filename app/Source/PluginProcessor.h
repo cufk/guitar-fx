@@ -90,6 +90,12 @@ public:
     // Stämapparat: vald stämning (index i ui::tunings()) och referens A4 (sparas i state).
     std::atomic<int> tuning { 0 };
     std::atomic<float> referenceA4 { 440.0f };
+    // Skärmsläckare: 0 = ingen, 1–4 = Strömmar, Klot, Terräng, Form; start efter N minuters
+    // inaktivitet (sparas i state).
+    std::atomic<int> screensaver { 0 };
+    std::atomic<int> screensaverMinutes { 5 };
+    // Räknas upp för varje mottaget MIDI-meddelande (GUI:t ser det som aktivitet).
+    int midiEventCount() const { return midiEvents_.load(std::memory_order_relaxed); }
 
 private:
     void timerCallback() override;
@@ -123,7 +129,8 @@ private:
     // meddelandetråden utför det (Rig är inte realtidssäker).
     enum : int { kCmdNone = -1000, kCmdBase = -1, kCmdNext = -2, kCmdPrev = -3 };
     std::atomic<int> pendingCommand_ { kCmdNone };
-    std::atomic<int> lastMidi_ { -1 };   // kodat: typ << 16 | nummer << 8 | värde
+    std::atomic<int> lastMidi_ { -1 };
+    std::atomic<int> midiEvents_ { 0 };   // kodat: typ << 16 | nummer << 8 | värde
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(GuitarFXProcessor)
 };
