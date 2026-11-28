@@ -380,6 +380,7 @@ void GuitarFXProcessor::getStateInformation(juce::MemoryBlock& destData) {
     state.setProperty("referenceA4",  referenceA4.load(), nullptr);
     state.setProperty("screensaver",  screensaver.load(), nullptr);
     state.setProperty("screensaverMinutes", screensaverMinutes.load(), nullptr);
+    if (stemsplitterKnown) state.setProperty("stemsplitterImported", stemsplitterImported.joinIntoString("\n"), nullptr);
     state.setProperty("cabIr",        irFile_.getFullPathName(), nullptr);
     state.setProperty("rig",          juce::JSON::toString(rigToJson(), true), nullptr);
     juce::MemoryOutputStream stream(destData, false);
@@ -405,6 +406,9 @@ void GuitarFXProcessor::setStateInformation(const void* data, int sizeInBytes) {
     referenceA4.store(juce::jlimit(420.0f, 460.0f, static_cast<float>(state.getProperty("referenceA4", 440.0f))));
     screensaver.store(juce::jlimit(0, 4, static_cast<int>(state.getProperty("screensaver", 0))));
     screensaverMinutes.store(juce::jlimit(1, 60, static_cast<int>(state.getProperty("screensaverMinutes", 5))));
+    stemsplitterKnown = state.hasProperty("stemsplitterImported");
+    stemsplitterImported = juce::StringArray::fromLines(state.getProperty("stemsplitterImported", "").toString());
+    stemsplitterImported.removeEmptyStrings();
 
     const juce::String ir = state.getProperty("cabIr", "").toString();
     if (ir.isNotEmpty() && juce::File(ir).existsAsFile()) loadImpulseResponse(juce::File(ir));

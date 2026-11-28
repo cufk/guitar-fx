@@ -94,6 +94,11 @@ public:
     // inaktivitet (sparas i state).
     std::atomic<int> screensaver { 0 };
     std::atomic<int> screensaverMinutes { 5 };
+    // StemSplitter-projekt som redan blivit presets eller hoppats över (mappnamn; meddelandetråden).
+    // stemsplitterKnown = false innan funktionen använts första gången (då räknas äldre projekt
+    // som redan sedda, så att frågan vid start inte listar hela biblioteket).
+    juce::StringArray stemsplitterImported;
+    bool stemsplitterKnown = false;
     // Räknas upp för varje mottaget MIDI-meddelande (GUI:t ser det som aktivitet).
     int midiEventCount() const { return midiEvents_.load(std::memory_order_relaxed); }
 

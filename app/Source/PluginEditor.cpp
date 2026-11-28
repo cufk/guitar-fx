@@ -21,6 +21,7 @@ GuitarFXEditor::GuitarFXEditor(GuitarFXProcessor& p)
     juce::Desktop::getInstance().addGlobalMouseListener(&activity_);
     lastActivityMs_ = juce::Time::getMillisecondCounterHiRes();
     lastMidiEvents_ = p.midiEventCount();
+    juce::Timer::callAfterDelay(1500, [safe = juce::Component::SafePointer<GuitarFXEditor>(this)] { if (safe) safe->checkStemSplitter(); });
     setlist_.analyse.onClick = [this] { setAnalysisOpen(!analysisView_.isOpen()); };
     analysisView_.onClose = [this] { setAnalysisOpen(false); };
 
@@ -142,6 +143,39 @@ void GuitarFXEditor::showScreensaverMenu() {
         });
         safe->userActivity();
     });
+}
+
+void GuitarFXEditor::checkStemSplitter() {
+    auto all = stems::listProjects();
+    if (all.empty()) return;
+    auto& imported = processor_.stemsplitterImported;
+    if (!processor_.stemsplitterKnown) {
+        // Första gången: bara projekt från de senaste två veckorna räknas som nya.
+        const auto cutoff = juce::Time::getCurrentTime() - juce::RelativeTime::days(14);
+        for (const auto& p : all) if (p.created < cutoff) imported.addIfNotAlreadyThere(p.key);
+        processor_.stemsplitterKnown = true;
+    }
+    std::vector<stems::Project> fresh;
+    for (const auto& p : all) if (!imported.contains(p.key) && fresh.size() < 5) fresh.push_back(p);
+    if (fresh.empty()) return;
+    juce::String list;
+    for (const auto& p : fresh) list << juce::String::fromUTF8("•  ") << p.name << "\n";
+    const auto n = static_cast<int>(fresh.size());
+    juce::Component::SafePointer<GuitarFXEditor> safe(this);
+    juce::AlertWindow::showAsync(
+        juce::MessageBoxOptions().withIconType(juce::MessageBoxIconType::NoIcon)
+            .withTitle(n == 1 ? S("Ny låt i StemSplitter") : S("Nya låtar i StemSplitter"))
+            .withMessage(list + S("\nVill du skapa ") + (n == 1 ? S("ett preset") : S("presets"))
+                         + S(" där gitarren får plats i bandet? Stämmorna ger ett bättre underlag än hela låten."))
+            .withButton(n == 1 ? S("Skapa preset") : S("Skapa presets"), 1)
+            .withButton(S("Hoppa över"), 2)
+            .withButton(S("Inte nu"), 0)
+            .withAssociatedComponent(this),
+        [safe, fresh](int r) {
+            if (!safe) return;
+            if (r == 1) { safe->setAnalysisOpen(true); safe->analysisView_.startBatch(fresh); }
+            else if (r == 2) for (const auto& p : fresh) safe->processor_.stemsplitterImported.addIfNotAlreadyThere(p.key);
+        });
 }
 
 void GuitarFXEditor::setAnalysisOpen(bool open) {

@@ -19,6 +19,7 @@
 #include "Theme.h"
 #include "dsp/core/PitchDetector.h"
 #include "../PluginProcessor.h"
+#include "../StemSplitterLibrary.h"
 
 namespace ui {
 // Fil vald i en FileChooser som en läsbar lokal fil. På Mac: den valda filen. På iPad ger
@@ -267,18 +268,29 @@ public:
     void setOpen(bool open);
     bool isOpen() const { return open_; }
     void chooseFile();
+    // StemSplitter: välj ett projekt ur listan, eller skapa presets för flera i följd.
+    void chooseStemProject();
+    void startBatch(std::vector<stems::Project> projects);
     std::function<void()> onClose;
     void paint(juce::Graphics&) override;
     void resized() override;
 private:
-    enum class State { Idle, Working, Done, Failed };
+    enum class State { Idle, Working, Done, Failed, BatchDone };
     void timerCallback() override;
     void start(const juce::File& file);
+    void startStems(const stems::Project& p);
     void stopWorker();
     GuitarFXProcessor& proc_;
     Pill choose_ { juce::String::fromUTF8("Välj låt…"), false };
     Pill create_ { "Skapa preset", false };
     Pill close_ { "Klar", false };
+    Pill fromStems_ { juce::String::fromUTF8("Från StemSplitter…"), false };
+    bool stemsMode_ = false;                 // analysen kommer från StemSplitter-stämmor
+    juce::String stemKey_;                   // projektets mappnamn (markeras som importerat)
+    std::vector<stems::Project> batch_;      // flera projekt i följd
+    std::atomic<int> batchIndex_ { 0 };
+    std::vector<std::pair<juce::String, gfx::GuitarFit>> batchResults_;   // skrivs av tråden
+    juce::StringArray batchCreated_;
     std::unique_ptr<juce::FileChooser> chooser_;
     std::thread worker_;
     std::atomic<bool> cancel_ { false }, finished_ { false };

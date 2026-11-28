@@ -105,4 +105,24 @@ GuitarFit fitGuitarToSong(const SongAnalysis& s) {
     return f;
 }
 
+GuitarFit fitGuitarToStems(const SongAnalysis& band, const SongAnalysis& comp, float bpm) {
+    SongAnalysis b = band;
+    if (bpm > 0.0f) b.bpm = bpm;
+    if (comp.valid && comp.roomMeasure != SongAnalysis::RoomMeasure::Default) {
+        // Rummet från kompet: så låter gitarren/kompet i inspelningen.
+        b.roomMeasure = comp.roomMeasure;
+        b.reverbDecaySec = comp.reverbDecaySec;
+        b.reverbMix = comp.reverbMix;
+    }
+    GuitarFit f = fitGuitarToSong(b);
+    if (!b.valid) return f;
+    f.spaceText = "Från stämmorna (bas, trummor, sång – utan låtens egen gitarr): " + f.spaceText;
+    if (comp.valid && comp.roomMeasure != SongAnalysis::RoomMeasure::Default) {
+        const auto pos = f.roomText.find("Låtens rum");
+        if (pos != std::string::npos) f.roomText.replace(pos, std::string("Låtens rum").size(), "Kompets rum i inspelningen");
+    }
+    if (bpm > 0.0f) f.tempoText = "Tempo från StemSplitter. " + f.tempoText;
+    return f;
+}
+
 } // namespace gfx

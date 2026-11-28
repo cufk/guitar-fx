@@ -1591,6 +1591,23 @@ int main() {
         CHECK(none.spaceText.empty() && !none.sustain);
     });
 
+    run("Gitarrens plats från stämmor: rummet från kompet, tempo från StemSplitter", [&] {
+        gfx::SongAnalysis band;
+        band.valid = true; band.bassDb = 3.0f; band.bpm = 100.0f;
+        band.roomMeasure = gfx::SongAnalysis::RoomMeasure::Stereo; band.reverbDecaySec = 3.5f; band.reverbMix = 0.35f;
+        gfx::SongAnalysis comp;
+        comp.valid = true; comp.roomMeasure = gfx::SongAnalysis::RoomMeasure::Stereo; comp.reverbDecaySec = 1.2f; comp.reverbMix = 0.12f;
+        const auto f = gfx::fitGuitarToStems(band, comp, 92.0f);
+        CHECK(f.lowCutHz >= 150.0f);                          // basen från bas-stämman
+        CHECK(f.reverbDecaySec < 1.2f);                       // kompets torra rum, inte sångens stora
+        CHECK(std::fabs(f.delayBpm - 92.0f) < 0.5f);          // StemSplitters tempo
+        CHECK(f.spaceText.find("stämmorna") != std::string::npos);
+        // Utan användbart kompet: bandets rum används.
+        gfx::SongAnalysis none;
+        const auto g = gfx::fitGuitarToStems(band, none, 0.0f);
+        CHECK(g.reverbDecaySec > 2.0f && std::fabs(g.delayBpm - 100.0f) < 0.5f);
+    });
+
     run("Låtanalys: komprimerad låt föreslår sustain, dynamisk gör det inte", [&] {
         auto dyn = makeSong(100.0f, 0.5f, 30, 8);
         // Dynamisk: växla mellan starka och svaga partier (var 4:e sekund).

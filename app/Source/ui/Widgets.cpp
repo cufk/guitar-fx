@@ -1312,10 +1312,14 @@ AnalysisView::AnalysisView(GuitarFXProcessor& proc) : proc_(proc) {
     create_.onClick = [this] {
         if (state_ != State::Done) return;
         proc_.createPresetFromAnalysis(fit_, title_);
+        if (stemsMode_ && stemKey_.isNotEmpty()) { proc_.stemsplitterImported.addIfNotAlreadyThere(stemKey_); proc_.stemsplitterKnown = true; }
         if (onClose) onClose();
     };
     close_.onClick = [this] { if (onClose) onClose(); };
+    fromStems_.onClick = [this] { chooseStemProject(); };
+    fromStems_.setTooltip(S("Analysera en låt som redan delats upp i StemSplitter – bättre underlag än hela mixen"));
     for (auto* c : { &choose_, &create_, &close_ }) addAndMakeVisible(c);
+    addChildComponent(fromStems_);
     create_.setVisible(false);
 }
 
@@ -1330,7 +1334,8 @@ void AnalysisView::stopWorker() {
 void AnalysisView::setOpen(bool open) {
     open_ = open;
     setVisible(open);
-    if (!open) { stopWorker(); stopTimer(); if (state_ == State::Working) state_ = State::Idle; }
+    if (!open) { stopWorker(); stopTimer(); if (state_ == State::Working || state_ == State::BatchDone) state_ = State::Idle; batch_.clear(); }
+    resized();
     repaint();
 }
 
@@ -1346,8 +1351,82 @@ void AnalysisView::chooseFile() {
                           });
 }
 
+void AnalysisView::chooseStemProject() {
+    const auto all = stems::listProjects();
+    juce::PopupMenu m;
+    m.addSectionHeader("StemSplitter");
+    if (all.empty()) m.addItem(-1, S("Inga projekt hittades i StemSplitter"), false);
+    const int n = juce::jmin(25, static_cast<int>(all.size()));
+    for (int i = 0; i < n; ++i) {
+        const auto& p = all[size_t(i)];
+        const bool done = proc_.stemsplitterImported.contains(p.key);
+        m.addItem(1 + i, p.name + "   " + p.created.formatted("%Y-%m-%d"), true, done);
+    }
+    juce::Component::SafePointer<AnalysisView> safe(this);
+    m.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&fromStems_), [safe, all](int r) {
+        if (safe && r > 0 && r <= static_cast<int>(all.size())) safe->startStems(all[size_t(r - 1)]);
+    });
+}
+
+void AnalysisView::startStems(const stems::Project& p) {
+    stopWorker();
+    stemsMode_ = true;
+    stemKey_ = p.key;
+    batch_.clear();
+    title_ = p.name;
+    state_ = State::Working;
+    progress_ = 0.0f;
+    finished_ = false;
+    error_.clear();
+    create_.setVisible(false);
+    worker_ = std::thread([this, p] {
+        const auto r = stems::analyse(p, [this](float x) { progress_ = x; return !cancel_.load(); });
+        gfx::SongAnalysis a;
+        a.valid = r.valid; a.seconds = r.seconds; a.bpm = r.bpm;
+        if (!r.valid && !cancel_) error_ = r.error.isNotEmpty() ? r.error : S("Analysen misslyckades.");
+        fit_ = r.fit;
+        result_ = a;
+        finished_ = true;
+    });
+    startTimerHz(30);
+    resized();
+    repaint();
+}
+
+void AnalysisView::startBatch(std::vector<stems::Project> projects) {
+    if (projects.empty()) return;
+    stopWorker();
+    stemsMode_ = true;
+    batch_ = std::move(projects);
+    batchIndex_ = 0;
+    batchResults_.clear();
+    batchCreated_.clear();
+    title_ = batch_.front().name;
+    state_ = State::Working;
+    progress_ = 0.0f;
+    finished_ = false;
+    error_.clear();
+    create_.setVisible(false);
+    worker_ = std::thread([this] {
+        const int n = static_cast<int>(batch_.size());
+        for (int i = 0; i < n && !cancel_; ++i) {
+            batchIndex_ = i;
+            const auto r = stems::analyse(batch_[size_t(i)], [this, i, n](float x) {
+                progress_ = (static_cast<float>(i) + x) / static_cast<float>(n); return !cancel_.load(); });
+            if (r.valid) batchResults_.push_back({ batch_[size_t(i)].key, r.fit });
+        }
+        finished_ = true;
+    });
+    startTimerHz(30);
+    resized();
+    repaint();
+}
+
 void AnalysisView::start(const juce::File& file) {
     stopWorker();
+    stemsMode_ = false;
+    stemKey_.clear();
+    batch_.clear();
     title_ = file.getFileNameWithoutExtension();
     state_ = State::Working;
     progress_ = 0.0f;
@@ -1379,10 +1458,27 @@ void AnalysisView::start(const juce::File& file) {
 }
 
 void AnalysisView::timerCallback() {
+    if (state_ == State::Working && finished_.load() && !batch_.empty()) {
+        // Flera StemSplitter-projekt: skapa ett preset per låt och visa en sammanfattning.
+        if (worker_.joinable()) worker_.join();
+        for (const auto& [key, fit] : batchResults_) {
+            juce::String name = key;
+            for (const auto& p : batch_) if (p.key == key) name = p.name;
+            proc_.createPresetFromAnalysis(fit, name);
+            batchCreated_.add(name);
+        }
+        for (const auto& p : batch_) proc_.stemsplitterImported.addIfNotAlreadyThere(p.key);
+        proc_.stemsplitterKnown = true;
+        state_ = State::BatchDone;
+        stopTimer();
+        resized();
+        repaint();
+        return;
+    }
     if (state_ == State::Working && finished_.load()) {
         if (worker_.joinable()) worker_.join();
         state_ = result_.valid ? State::Done : State::Failed;
-        fit_ = gfx::fitGuitarToSong(result_);
+        if (!stemsMode_) fit_ = gfx::fitGuitarToSong(result_);
         create_.setVisible(state_ == State::Done);
         choose_.setButtonText(state_ == State::Done ? S("Välj annan låt") : S("Välj låt…"));
         stopTimer();
@@ -1433,8 +1529,34 @@ void AnalysisView::paint(juce::Graphics& g) {
         g.drawText(juce::String(juce::roundToInt(progress_.load() * 100.0f)), ring, juce::Justification::centred, false);
         g.setColour(p.secondaryInk);
         g.setFont(font(16.0f));
-        g.drawText(S("Analyserar ") + title_ + S("…"), ring.withY(ring.getBottom() + 18.0f).withHeight(24.0f).toNearestInt(),
-                   juce::Justification::centred, true);
+        juce::String what = S("Analyserar ") + title_ + S("…");
+        if (!batch_.empty()) {
+            const int i = juce::jlimit(0, static_cast<int>(batch_.size()) - 1, batchIndex_.load());
+            what = S("Analyserar ") + juce::String(i + 1) + S(" av ") + juce::String(static_cast<int>(batch_.size())) + S(": ") + batch_[size_t(i)].name + S("…");
+        }
+        g.drawText(what, ring.withY(ring.getBottom() + 18.0f).withHeight(24.0f).toNearestInt(), juce::Justification::centred, true);
+        return;
+    }
+
+    if (state_ == State::BatchDone) {
+        auto box = body.withSizeKeepingCentre(juce::jmin(body.getWidth(), 640), juce::jmin(body.getHeight(), 360));
+        g.setColour(p.ink);
+        g.setFont(font(26.0f, Weight::SemiBold));
+        const int n = batchCreated_.size();
+        g.drawText(n == 1 ? S("1 preset skapat från StemSplitter") : juce::String(n) + S(" presets skapade från StemSplitter"),
+                   box.removeFromTop(44), juce::Justification::centred, false);
+        g.setColour(p.secondaryInk);
+        g.setFont(font(15.0f));
+        g.drawText(S("De ligger sist i setlistan – justera med öronen."), box.removeFromTop(30), juce::Justification::centred, false);
+        box.removeFromTop(16);
+        g.setColour(p.ink);
+        g.setFont(font(16.0f, Weight::SemiBold));
+        for (const auto& name : batchCreated_) g.drawText(name, box.removeFromTop(28), juce::Justification::centred, true);
+        if (n < static_cast<int>(batch_.size())) {
+            g.setColour(p.danger);
+            g.setFont(font(14.0f));
+            g.drawText(S("Några låtar gick inte att läsa och hoppades över."), box.removeFromTop(28), juce::Justification::centred, false);
+        }
         return;
     }
 
@@ -1447,7 +1569,8 @@ void AnalysisView::paint(juce::Graphics& g) {
     g.setColour(p.secondaryInk);
     g.setFont(font(16.0f));
     g.drawText((a.bpm > 0 ? juce::String(juce::roundToInt(a.bpm)) + S(" BPM  ·  ") : juce::String())
-               + juce::String(juce::roundToInt(a.seconds / 60.0f)) + S(" min  ·  Gitarrens plats i bandet – justera med öronen"),
+               + juce::String(juce::roundToInt(a.seconds / 60.0f)) + S(" min  ·  ")
+               + (stemsMode_ ? S("Från StemSplitter (4 stämmor)  ·  ") : juce::String()) + S("Gitarrens plats i bandet – justera med öronen"),
                top, juce::Justification::topLeft, true);
 
     const int gap = kGridGap;
@@ -1496,10 +1619,19 @@ void AnalysisView::resized() {
     if (state_ == State::Done) {
         auto row = r.removeFromBottom(56);
         create_.setBounds(row.removeFromLeft(200));
-    } else if (state_ != State::Working) {
-        choose_.setBounds(r.withSizeKeepingCentre(220, 56).translated(0, 120));
+    } else if (state_ != State::Working && state_ != State::BatchDone) {
+        const bool stemsAvailable = stems::projectsRoot().isDirectory();
+        if (stemsAvailable) {
+            auto row = r.withSizeKeepingCentre(460, 56).translated(0, 120);
+            choose_.setBounds(row.removeFromLeft(220));
+            fromStems_.setBounds(row.removeFromRight(220));
+        } else {
+            choose_.setBounds(r.withSizeKeepingCentre(220, 56).translated(0, 120));
+        }
+        fromStems_.setVisible(stemsAvailable);
     }
-    choose_.setVisible(state_ != State::Working);
+    if (state_ == State::Working || state_ == State::BatchDone || state_ == State::Done) fromStems_.setVisible(false);
+    choose_.setVisible(state_ != State::Working && state_ != State::BatchDone);
 }
 
 // ---------------------------------------------------------------------------

@@ -69,6 +69,7 @@ target_sources(Stagebox PRIVATE
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
     Source/StandaloneApp.cpp
+    Source/StemSplitterLibrary.cpp
     Source/ui/Icons.cpp
     Source/ui/Theme.cpp
     Source/ui/Widgets.cpp
