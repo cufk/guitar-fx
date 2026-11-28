@@ -38,4 +38,12 @@ struct GuitarFit {
 
 GuitarFit fitGuitarToSong(const SongAnalysis& song);
 
+// Samma sak från separerade stämmor (StemSplitter/Demucs): bättre underlag.
+//  band  = analys av bas + trummor + sång tillsammans – bandets plats UTAN låtens egen
+//          gitarr/klaviatur, så att de inte räknas som upptagen plats.
+//  comp  = analys av "övrigt"-stämman (gitarr, klaviatur) – rummet mäts där, alltså hur
+//          kompet ligger i inspelningen, i stället för på hela mixen (där sångens reverb dominerar).
+//  bpm   = tempo från StemSplitters slaganalys (0 = använd bandets uppskattning).
+GuitarFit fitGuitarToStems(const SongAnalysis& band, const SongAnalysis& comp, float bpm);
+
 } // namespace gfx

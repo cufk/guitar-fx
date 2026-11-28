@@ -60,7 +60,13 @@ Driftsäkerhet live är huvudkravet. Svara på svenska.
   Rum: stereo via L/R-koherens, mono via sen avklingning (tvådelad anpassning), annars
   standardval. Mät aldrig rum som "median av avklingning" i tät musik – det ger alltid max.
   Kalibrerat mot CC-låtar från Internet Archive (testas lokalt, checkas inte in).
-  Användaren valde signalanalys (inte Demucs/AI-separering) – Demucs kan bli ett Mac-tillval.
+  StemSplitter (användarens andra app, repo cufk/stemsplitter-macos) separerar med Demucs:
+  `app/Source/StemSplitterLibrary` läser ~/Library/Application Support/StemSplitter/projects/
+  <nyckel>/{vocals,drums,bass,other}.wav + project.json (sourceName, createdAt, beatGrid.bpm).
+  `gfx::fitGuitarToStems`: bandets plats på bas+trummor+sång (utan låtens gitarr), rummet på
+  "övrigt", tempo från StemSplitter. Vid start frågar editorn om presets för nya projekt
+  (högst 5; första gången räknas projekt äldre än 14 dagar som sedda); importerade/hoppade
+  över sparas i state (`stemsplitterImported`). Bara Mac (iPadOS: appar kan inte läsa varandras filer).
   Ny effekt = lägg till i kedjan + `rig_.addEffect({...})` i processorn; ruta, reglage och
   sparning kommer automatiskt.
 - Varumärke: `app/Resources/BRAND.md` (färger, filer). Appikon via `ICON_BIG` i

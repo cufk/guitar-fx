@@ -295,6 +295,13 @@ mixen redan är full och gitarren får det som blir över (vanlig mixpraxis för
 | Dynamik | Spridning i korttidsnivå | Tät, komprimerad låt → sustain så att gitarren inte försvinner |
 | Tempo | Anslagsrytm, 60–180 BPM | Delayns tempo (1/8 punkterad) – avstängd, slå på vid behov |
 
+**Från StemSplitter (Mac):** har låten redan delats upp i StemSplitter blir resultatet bättre.
+Välj *Från StemSplitter…* i låtanalysen, eller svara ja när Stagebox vid start frågar om nya
+låtar. Då analyseras bandets plats på bas, trummor och sång *utan* låtens egen gitarr (som
+annars räknas som upptagen plats), rummet mäts på komp-stämman i stället för på hela mixen,
+och tempot tas från StemSplitters slaganalys. Stagebox kommer ihåg vilka låtar som redan
+blivit presets eller hoppats över.
+
 Ingen widener: gitarren ligger smal i bandet. **Skapa preset** lägger till ett preset med
 låtens namn och aktiverar det – se det som en startpunkt och justera med öronen.
 

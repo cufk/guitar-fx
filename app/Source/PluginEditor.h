@@ -29,6 +29,8 @@ private:
     // Skärmsläckare: aktivitet (mus/beröring var som helst i appen, tangent, MIDI) nollställer
     // tiden; första klicket när den visas väcker bara.
     void showScreensaverMenu();
+    // Vid start: nya projekt i StemSplitter som inte blivit presets? Fråga om presets ska skapas.
+    void checkStemSplitter();
     void userActivity();
     struct ActivityListener final : public juce::MouseListener {
         explicit ActivityListener(GuitarFXEditor& e) : owner(e) {}
